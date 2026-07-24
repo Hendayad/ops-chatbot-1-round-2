@@ -392,9 +392,9 @@ async def _trigger_ticket(handoff: dict[str, Any]) -> Any:
     The local import lets this node be developed before the teammate's scaffold
     branch is merged into the working branch.
     """
-    from app.services.escalation import trigger_answering_escalation
+    from app.tickets import service as ticket_service
 
-    return await trigger_answering_escalation(**handoff)
+    return await ticket_service.trigger_answering_escalation(**handoff)
 
 
 def _unconfirmed_message() -> str:

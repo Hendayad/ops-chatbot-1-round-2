@@ -5,7 +5,6 @@ SQLModel directly. All persistence and business rules remain inside
 ``app.tickets.service``.
 """
 
-from __future__ import annotations
 
 from datetime import datetime
 from typing import NoReturn
