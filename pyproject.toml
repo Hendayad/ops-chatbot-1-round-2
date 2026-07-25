@@ -61,6 +61,7 @@ dev = [
     "detect-secrets>=1.5.0",
     "pre-commit>=4.5.1",
     "pyright>=1.1.390",
+    "pytest-asyncio>=1.4.0",
     "ruff>=0.11.4",
 ]
 test = ["httpx>=0.28.1", "pytest>=8.3.5"]
@@ -112,7 +113,7 @@ exclude = ["migrations", "*.ipynb", "venv"]
 # Enable flake8-bugbear (`B`) rules and docstring (`D`) rules
 select = ["E", "F", "B", "ERA", "D"]
 # Never enforce `E501` (line length violations).
-ignore = ["E501", "D203", "D213", "B904", "B008"]
+ignore = ["E501", "D203", "D213", "B904", "B008", "D100", "D101", "D102", "D103", "D104"]
 # Avoid trying to fix flake8-bugbear (`B`) violations.
 unfixable = ["B"]
 
