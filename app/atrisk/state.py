@@ -169,7 +169,7 @@ def get_latest_state(learner_id: str) -> Optional[AtRiskStateRecord]:
         return session.exec(
             select(AtRiskStateRecord)
             .where(AtRiskStateRecord.learner_id == learner_id)
-            .order_by(AtRiskStateRecord.run_date.desc())
+            .order_by(AtRiskStateRecord.run_date.desc())  # pyright: ignore[reportAttributeAccessIssue] -- run_date is a Column at runtime, not a plain `date`
         ).first()
 
 
@@ -180,7 +180,7 @@ def get_history(learner_id: str, limit: int = 30) -> list[AtRiskStateRecord]:
         rows = session.exec(
             select(AtRiskStateRecord)
             .where(AtRiskStateRecord.learner_id == learner_id)
-            .order_by(AtRiskStateRecord.run_date.desc())
+            .order_by(AtRiskStateRecord.run_date.desc())  # pyright: ignore[reportAttributeAccessIssue] -- run_date is a Column at runtime, not a plain `date`
             .limit(limit)
         ).all()
         return list(rows)
@@ -190,7 +190,11 @@ def get_latest_run_date() -> Optional[date]:
     """Return the most recent run_date with any persisted state, if any."""
     db_service = DatabaseService()
     with db_service.get_session_maker() as session:
-        return session.exec(select(AtRiskStateRecord.run_date).order_by(AtRiskStateRecord.run_date.desc())).first()
+        return session.exec(
+            select(AtRiskStateRecord.run_date).order_by(  # pyright: ignore[reportCallIssue, reportArgumentType]
+                AtRiskStateRecord.run_date.desc()  # pyright: ignore[reportAttributeAccessIssue]
+            )
+        ).first()
 
 
 def _aggregate_from_records(target_date: date, records: list[AtRiskStateRecord]) -> AtRiskAggregate:
