@@ -16,7 +16,7 @@ insert race.
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Optional
 
 from pydantic import BaseModel as SchemaBaseModel
@@ -136,6 +136,15 @@ def upsert_at_risk_state(result: DetectionResult, run_date: Optional[date] = Non
                 # fall through and update that row instead.
                 session.rollback()
                 record = _existing_record(session, result.learner_id, effective_run_date)
+                if record is None:
+                    # The unique constraint fired, so a row must exist now;
+                    # not finding one means something else deleted it
+                    # concurrently, which the idempotency contract never
+                    # expects. Fail loudly rather than silently no-op.
+                    raise RuntimeError(
+                        f"Lost insert race for learner_id={result.learner_id!r} "
+                        f"run_date={effective_run_date!r} but no row was found on retry."
+                    )
 
         # Update path: either the record already existed, or we just lost
         # the insert race above. Either way, make it reflect this evaluation.
@@ -184,6 +193,22 @@ def get_latest_run_date() -> Optional[date]:
         return session.exec(select(AtRiskStateRecord.run_date).order_by(AtRiskStateRecord.run_date.desc())).first()
 
 
+def _aggregate_from_records(target_date: date, records: list[AtRiskStateRecord]) -> AtRiskAggregate:
+    """Build one AtRiskAggregate from a batch of records already known to share `target_date`."""
+    total = len(records)
+    at_risk_count = sum(1 for r in records if r.at_risk)
+    return AtRiskAggregate(
+        run_date=target_date,
+        total_learners=total,
+        at_risk_count=at_risk_count,
+        at_risk_percent=round((at_risk_count / total * 100), 2) if total else 0.0,
+        missed_deadlines_count=sum(1 for r in records if r.missed_deadlines),
+        inactive_count=sum(1 for r in records if r.inactive),
+        low_progress_count=sum(1 for r in records if r.low_progress),
+        low_feedback_count=sum(1 for r in records if r.low_feedback),
+    )
+
+
 def get_aggregate(run_date: Optional[date] = None) -> AtRiskAggregate:
     """Read-only aggregate of at-risk state for one run_date, for Ops dashboards.
 
@@ -200,31 +225,54 @@ def get_aggregate(run_date: Optional[date] = None) -> AtRiskAggregate:
     with db_service.get_session_maker() as session:
         target_date = run_date or get_latest_run_date()
         if target_date is None:
-            return AtRiskAggregate(
-                run_date=datetime.now(UTC).date(),
-                total_learners=0,
-                at_risk_count=0,
-                at_risk_percent=0.0,
-                missed_deadlines_count=0,
-                inactive_count=0,
-                low_progress_count=0,
-                low_feedback_count=0,
-            )
+            return _aggregate_from_records(datetime.now(UTC).date(), [])
 
         records = session.exec(select(AtRiskStateRecord).where(AtRiskStateRecord.run_date == target_date)).all()
-        total = len(records)
-        at_risk_count = sum(1 for r in records if r.at_risk)
+        return _aggregate_from_records(target_date, list(records))
 
-        return AtRiskAggregate(
-            run_date=target_date,
-            total_learners=total,
-            at_risk_count=at_risk_count,
-            at_risk_percent=round((at_risk_count / total * 100), 2) if total else 0.0,
-            missed_deadlines_count=sum(1 for r in records if r.missed_deadlines),
-            inactive_count=sum(1 for r in records if r.inactive),
-            low_progress_count=sum(1 for r in records if r.low_progress),
-            low_feedback_count=sum(1 for r in records if r.low_feedback),
-        )
+
+def get_aggregate_trend(start_date: date, end_date: Optional[date] = None) -> list[AtRiskAggregate]:
+    """Read-only day-by-day at-risk trend for the Ops dashboards (PRD F3.3 / M05-T1 req 4).
+
+    Returns one AtRiskAggregate per calendar day in [start_date, end_date],
+    inclusive, in ascending date order — including days with no persisted
+    state (zero-filled), so a dashboard can plot a continuous line instead
+    of skipping gaps. This is a pure read: it never writes, and calling it
+    twice for the same range returns the same result unless new state was
+    persisted for a day in between.
+
+    Args:
+        start_date: First day of the trend window (inclusive).
+        end_date: Last day of the trend window (inclusive). Defaults to
+            today (UTC) if omitted.
+
+    Returns:
+        One AtRiskAggregate per day in the window, oldest first. Raises
+        ValueError if end_date is before start_date.
+    """
+    effective_end_date = end_date or datetime.now(UTC).date()
+    if effective_end_date < start_date:
+        raise ValueError(f"end_date ({effective_end_date}) is before start_date ({start_date})")
+
+    db_service = DatabaseService()
+    with db_service.get_session_maker() as session:
+        records = session.exec(
+            select(AtRiskStateRecord).where(
+                AtRiskStateRecord.run_date >= start_date,
+                AtRiskStateRecord.run_date <= effective_end_date,
+            )
+        ).all()
+
+    records_by_date: dict[date, list[AtRiskStateRecord]] = {}
+    for record in records:
+        records_by_date.setdefault(record.run_date, []).append(record)
+
+    trend: list[AtRiskAggregate] = []
+    day_count = (effective_end_date - start_date).days + 1
+    for offset in range(day_count):
+        day = start_date + timedelta(days=offset)
+        trend.append(_aggregate_from_records(day, records_by_date.get(day, [])))
+    return trend
 
 
 def get_at_risk_learner_ids(run_date: Optional[date] = None) -> list[str]:

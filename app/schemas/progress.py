@@ -1,13 +1,7 @@
-<<<<<<< HEAD
-"""Data contract describing a learner's progress snapshot."""
-
-from datetime import datetime
-=======
 """Data contracts describing a learner's progress within a cohort.
->>>>>>> origin/main
 
 This module defines the canonical shape of "learner progress" data that
-feeds the at-risk signal detector (see ``app.risk.signals``). It is
+feeds the at-risk signal detector (see ``app.atrisk.signals``). It is
 intentionally decoupled from the signal-computation logic: anything that
 can produce a ``LearnerProgress`` instance (a DB query, a batch ETL job,
 a test fixture) can be fed into the risk engine without changes to either
@@ -37,23 +31,7 @@ class FeedbackEntry(BaseModel):
 
 
 class LearnerProgress(BaseModel):
-<<<<<<< HEAD
-    """Progress snapshot for a learner, used as input to the at-risk detector.
-
-    Attributes:
-        learner_id: Unique identifier of the learner this snapshot belongs to.
-        missed_deadlines: Count of task/project deadlines missed to date. Must be >= 0.
-        inactive_days: Days since the learner's last recorded activity. Must be >= 0.
-        progress_percent: Overall completion percentage for the learner's assigned
-            work, on a 0-100 scale. Defaults to 100 (fully caught up) when unknown.
-        feedback_score: Most recent feedback score the learner gave, on a 1-5 scale
-            (5 = most positive). None means the learner hasn't left feedback yet —
-            this is treated as "no signal," not as a low score.
-        evaluated_at: Timestamp this snapshot was computed at.
-    """
-=======
     """Snapshot of a single learner's progress at a point in time.
->>>>>>> origin/main
 
     This is the sole input to the at-risk signal detector. Every field is
     something we can compute from platform data (tasks, sessions,
@@ -68,9 +46,6 @@ class LearnerProgress(BaseModel):
         description="UTC timestamp this snapshot was computed at.",
     )
 
-<<<<<<< HEAD
-    evaluated_at: datetime
-=======
     total_tasks: int = Field(..., ge=0, description="Total tasks assigned to the learner so far.")
     completed_tasks: int = Field(..., ge=0, description="Tasks the learner has completed.")
     missed_deadlines: int = Field(default=0, ge=0, description="Count of task/project deadlines missed to date.")
@@ -134,4 +109,3 @@ class LearnerProgress(BaseModel):
         if not self.recent_feedback:
             return None
         return sum(entry.score for entry in self.recent_feedback) / len(self.recent_feedback)
->>>>>>> origin/main

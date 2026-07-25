@@ -20,7 +20,7 @@ import json
 import os
 import sys
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Optional
 
 # Fix import path for app module (matches evals/main.py's convention)
@@ -28,10 +28,13 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.atrisk.detector import detect_at_risk  # noqa: E402
 from app.core.logging import logger  # noqa: E402
-from app.schemas.progress import LearnerProgress  # noqa: E402
+from app.schemas.progress import FeedbackEntry, LearnerProgress  # noqa: E402
 from app.schemas.signals import RiskThresholds  # noqa: E402
 
 THRESHOLDS = RiskThresholds()
+# THRESHOLDS.minimum_progress_ratio is 0-1; this suite's cases are written in
+# the more readable 0-100 percent terms via _progress()'s progress_percent kwarg.
+MIN_PROGRESS_PERCENT = THRESHOLDS.minimum_progress_ratio * 100
 
 
 @dataclass
@@ -44,8 +47,34 @@ class LabeledCase:
     expected_signals: dict = field(default_factory=dict)
 
 
-def _progress(learner_id: str, **kwargs) -> LearnerProgress:
-    return LearnerProgress(learner_id=learner_id, evaluated_at=datetime.now(UTC), **kwargs)
+def _progress(
+    learner_id: str,
+    *,
+    missed_deadlines: int = 0,
+    inactive_days: float = 0,
+    progress_percent: float = 100,
+    feedback_score: float | None = None,
+    cohort_id: str = "cohort_default",
+) -> LearnerProgress:
+    """Build a LearnerProgress against the real platform schema.
+
+    Uses the same intuitive terms this suite's labeled cases already read in
+    (percent/days/score), so the cases below stay readable even though the
+    underlying contract is ratio + computed-property based.
+    """
+    as_of = datetime.now(UTC)
+    total_tasks = 100
+    completed_tasks = round(progress_percent)
+    return LearnerProgress(
+        learner_id=learner_id,
+        cohort_id=cohort_id,
+        as_of=as_of,
+        total_tasks=total_tasks,
+        completed_tasks=completed_tasks,
+        missed_deadlines=missed_deadlines,
+        last_active_at=as_of - timedelta(days=inactive_days),
+        recent_feedback=[] if feedback_score is None else [FeedbackEntry(score=feedback_score, submitted_at=as_of)],
+    )
 
 
 def build_labeled_dataset() -> list[LabeledCase]:
@@ -89,7 +118,7 @@ def build_labeled_dataset() -> list[LabeledCase]:
                 "learner_low_progress",
                 missed_deadlines=0,
                 inactive_days=0,
-                progress_percent=THRESHOLDS.minimum_progress_percent - 1,
+                progress_percent=MIN_PROGRESS_PERCENT - 1,
                 feedback_score=5,
             ),
             expected_at_risk=True,
@@ -133,7 +162,7 @@ def build_labeled_dataset() -> list[LabeledCase]:
                 "learner_borderline_safe",
                 missed_deadlines=THRESHOLDS.missed_deadlines - 1,
                 inactive_days=THRESHOLDS.inactivity_days - 1,
-                progress_percent=THRESHOLDS.minimum_progress_percent,
+                progress_percent=MIN_PROGRESS_PERCENT,
                 feedback_score=THRESHOLDS.minimum_feedback_score,
             ),
             expected_at_risk=False,

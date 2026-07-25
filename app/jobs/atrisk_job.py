@@ -46,7 +46,9 @@ class ProgressProvider(Protocol):
     scheduler; tests inject a static list.
     """
 
-    def __call__(self) -> list[LearnerProgress]: ...
+    def __call__(self) -> list[LearnerProgress]:
+        """Return the LearnerProgress snapshots to evaluate for this run."""
+        ...
 
 
 @dataclass

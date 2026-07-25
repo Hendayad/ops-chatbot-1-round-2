@@ -51,6 +51,7 @@ class NoOpNotificationSender(NotificationSender):
     """
 
     def send(self, notification: Notification) -> None:
+        """Discard the notification — used before a real delivery channel is wired up."""
         return None
 
 
@@ -62,9 +63,11 @@ class InMemoryNotificationSender(NotificationSender):
     """
 
     def __init__(self) -> None:
+        """Start with an empty record of delivered notifications."""
         self.sent: list[Notification] = []
 
     def send(self, notification: Notification) -> None:
+        """Record the notification as delivered instead of calling a real channel."""
         self.sent.append(notification)
 
 

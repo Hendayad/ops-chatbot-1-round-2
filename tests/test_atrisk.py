@@ -5,7 +5,7 @@ clean up their own tables via an autouse fixture and run against the
 project's configured Postgres (see docs/database.md and .env.test).
 """
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from sqlalchemy import delete
@@ -13,17 +13,43 @@ from sqlmodel import select
 
 from app.atrisk.detector import detect_at_risk, resolve_thresholds, run_detector
 from app.atrisk.nudges import InMemoryNotificationSender, build_nudge, send_at_risk_nudges
-from app.atrisk.state import AtRiskStateRecord, get_aggregate, upsert_at_risk_state
+from app.atrisk.state import AtRiskStateRecord, get_aggregate, get_aggregate_trend, upsert_at_risk_state
 from app.jobs.atrisk_job import run_at_risk_job
 from app.models.notification import NotificationRecord
 from app.schemas.notification import NotificationStatus
-from app.schemas.progress import LearnerProgress
+from app.schemas.progress import FeedbackEntry, LearnerProgress
 from app.schemas.signals import RiskThresholds
 from app.services.database import DatabaseService
 
 
-def _progress(learner_id: str, **kwargs) -> LearnerProgress:
-    return LearnerProgress(learner_id=learner_id, evaluated_at=datetime.now(UTC), **kwargs)
+def _progress(
+    learner_id: str,
+    *,
+    missed_deadlines: int = 0,
+    inactive_days: float = 0,
+    progress_percent: float = 100,
+    feedback_score: float | None = None,
+    cohort_id: str = "cohort_default",
+) -> LearnerProgress:
+    """Build a LearnerProgress against the real platform schema.
+
+    Uses the same intuitive terms the at-risk tests already read in
+    (percent/days/score), so every existing test case below stays unchanged
+    even though the underlying contract is now ratio + computed-property based.
+    """
+    as_of = datetime.now(UTC)
+    total_tasks = 100
+    completed_tasks = round(progress_percent)
+    return LearnerProgress(
+        learner_id=learner_id,
+        cohort_id=cohort_id,
+        as_of=as_of,
+        total_tasks=total_tasks,
+        completed_tasks=completed_tasks,
+        missed_deadlines=missed_deadlines,
+        last_active_at=as_of - timedelta(days=inactive_days),
+        recent_feedback=[] if feedback_score is None else [FeedbackEntry(score=feedback_score, submitted_at=as_of)],
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -116,6 +142,36 @@ def test_get_aggregate_reflects_persisted_state():
     assert aggregate.total_learners == 2
     assert aggregate.at_risk_count == 1
     assert aggregate.at_risk_percent == 50.0
+
+
+def test_get_aggregate_trend_zero_fills_days_with_no_state():
+    """The trend covers every day in range, including days nothing was persisted for (Ops dashboards, PRD F3.3)."""
+    day1 = date(2026, 7, 22)
+    day2 = date(2026, 7, 23)  # deliberately left empty
+    day3 = date(2026, 7, 24)
+
+    at_risk_progress = _progress(
+        "learner_trend_1", missed_deadlines=5, inactive_days=0, progress_percent=100, feedback_score=5
+    )
+    healthy_progress = _progress(
+        "learner_trend_2", missed_deadlines=0, inactive_days=0, progress_percent=100, feedback_score=5
+    )
+    upsert_at_risk_state(detect_at_risk(at_risk_progress), run_date=day1)
+    upsert_at_risk_state(detect_at_risk(healthy_progress), run_date=day1)
+    upsert_at_risk_state(detect_at_risk(at_risk_progress), run_date=day3)
+
+    trend = get_aggregate_trend(day1, day3)
+
+    assert [a.run_date for a in trend] == [day1, day2, day3]
+    assert trend[0].total_learners == 2 and trend[0].at_risk_count == 1
+    assert trend[1].total_learners == 0 and trend[1].at_risk_count == 0  # zero-filled gap day
+    assert trend[2].total_learners == 1 and trend[2].at_risk_count == 1
+
+
+def test_get_aggregate_trend_rejects_end_before_start():
+    """A trend window with end_date before start_date is a caller bug, not a silent empty result."""
+    with pytest.raises(ValueError):
+        get_aggregate_trend(date(2026, 7, 24), date(2026, 7, 20))
 
 
 def test_build_nudge_dedup_key_stable_within_frequency_window():
