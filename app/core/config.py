@@ -220,6 +220,11 @@ class Settings:
         self.EVALUATION_API_KEY = os.getenv("EVALUATION_API_KEY", self.OPENAI_API_KEY)
         self.EVALUATION_SLEEP_TIME = int(os.getenv("EVALUATION_SLEEP_TIME", "10"))
 
+        # SMTP / Email Configuration
+        self.SMTP_HOST = os.getenv("SMTP_HOST", "")
+        self.SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+        self.SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL", "")
+
         # Apply environment-specific settings
         self.apply_environment_settings()
 

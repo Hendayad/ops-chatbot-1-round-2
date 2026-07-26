@@ -6,6 +6,7 @@ from the read-only Session/EscalationTicket stores.
 """
 
 from prometheus_client import Counter, Gauge, Histogram
+from datetime import datetime
 
 
 support_sessions_total = Counter(
@@ -52,3 +53,52 @@ def update_support_metrics(metrics: dict) -> None:
 
     for ticket in metrics["resolution_time"]:
         resolution_time_seconds.observe(ticket["estimated_resolution_seconds"])
+
+
+
+reminders_sent_total = Counter(
+    "ops_reminders_sent_total",
+    "Total number of reminder notifications sent",
+)
+
+reminders_late_total = Counter(
+    "ops_reminders_late_total",
+    "Total number of reminders sent at or after their event's due_at",
+)
+
+reminder_on_time_rate = Gauge(
+    "ops_reminder_on_time_rate",
+    "Fraction of sent reminders delivered before their event's due_at, for the last computed batch",
+)
+def _as_naive_utc(dt: datetime) -> datetime:
+    """Strip tzinfo for safe comparison against naive DB timestamps."""
+    return dt.replace(tzinfo=None) if dt.tzinfo is not None else dt
+
+def update_reminder_kpis(notifications: list, events_by_dedup_key: dict) -> None:
+    """Refresh Prometheus KPIs from a batch of dispatched reminder notifications.
+
+    Args:
+        notifications: Notification results from dispatch_due_reminders
+            (only SENT ones count toward on-time tracking).
+        events_by_dedup_key: Maps each notification's dedup_key to its
+            source ReminderEvent, so we know each one's due_at to compare against.
+    """
+    from app.schemas.notification import NotificationStatus
+
+    sent = [n for n in notifications if n.status == NotificationStatus.SENT]
+    if not sent:
+        return
+
+    late_count = 0
+    for notification in sent:
+        event = events_by_dedup_key.get(notification.dedup_key)
+        if event is None:
+            continue
+        if _as_naive_utc(notification.created_at) >= _as_naive_utc(event.due_at):
+            late_count += 1
+    reminders_sent_total.inc(len(sent))
+    reminders_late_total.inc(late_count)
+
+    on_time_rate = (len(sent) - late_count) / len(sent)
+    reminder_on_time_rate.set(on_time_rate)
+
