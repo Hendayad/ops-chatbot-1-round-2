@@ -1,4 +1,5 @@
 """Tests for reminder event scheduling, preference filtering, and dedup."""
+
 import asyncio
 from datetime import datetime, timedelta, timezone
 
@@ -13,12 +14,14 @@ from sqlalchemy import delete
 db_service = DatabaseService()
 TEST_EMAIL = "reminders_test@example.com"
 
+
 @pytest.fixture(autouse=True)
 def cleanup_reminder_events():
     """Ensure the reminder_event table is empty before each test."""
     with db_service.get_session_maker() as session:
         session.exec(delete(ReminderEvent))
         session.commit()
+
 
 @pytest.fixture(autouse=True)
 def cleanup_test_data():
@@ -29,9 +32,7 @@ def cleanup_test_data():
 @pytest.fixture
 def test_user():
     """Create a fresh test user for reminder tests."""
-    user = asyncio.run(
-        db_service.create_user(email=TEST_EMAIL, password="hashed_pw", username="reminders_tester")
-    )
+    user = asyncio.run(db_service.create_user(email=TEST_EMAIL, password="hashed_pw", username="reminders_tester"))
     return user
 
 
@@ -55,9 +56,7 @@ def test_dispatch_sends_reminder_for_due_event(test_user):
     with db_service.get_session_maker() as session:
         _create_event(session, recipient_id=str(test_user.id), due_at=now + timedelta(minutes=30))
 
-        results = dispatch_due_reminders(
-            session, now=now, lead_time=timedelta(hours=1), lead_time_label="1h_before"
-        )
+        results = dispatch_due_reminders(session, now=now, lead_time=timedelta(hours=1), lead_time_label="1h_before")
 
     assert len(results) == 1
     assert results[0].status == NotificationStatus.SENT
@@ -69,9 +68,7 @@ def test_dispatch_skips_events_outside_lead_time(test_user):
     with db_service.get_session_maker() as session:
         _create_event(session, recipient_id=str(test_user.id), due_at=now + timedelta(days=5))
 
-        results = dispatch_due_reminders(
-            session, now=now, lead_time=timedelta(hours=1), lead_time_label="1h_before"
-        )
+        results = dispatch_due_reminders(session, now=now, lead_time=timedelta(hours=1), lead_time_label="1h_before")
 
     assert len(results) == 0
 
@@ -82,12 +79,8 @@ def test_dispatch_does_not_resend_same_event_and_lead_time(test_user):
     with db_service.get_session_maker() as session:
         _create_event(session, recipient_id=str(test_user.id), due_at=now + timedelta(minutes=30))
 
-        first = dispatch_due_reminders(
-            session, now=now, lead_time=timedelta(hours=1), lead_time_label="1h_before"
-        )
-        second = dispatch_due_reminders(
-            session, now=now, lead_time=timedelta(hours=1), lead_time_label="1h_before"
-        )
+        first = dispatch_due_reminders(session, now=now, lead_time=timedelta(hours=1), lead_time_label="1h_before")
+        second = dispatch_due_reminders(session, now=now, lead_time=timedelta(hours=1), lead_time_label="1h_before")
 
     assert first[0].status == NotificationStatus.SENT
     assert second[0].status == NotificationStatus.SKIPPED
@@ -96,6 +89,7 @@ def test_dispatch_does_not_resend_same_event_and_lead_time(test_user):
 def test_dispatch_respects_global_opt_out(test_user):
     """Verify a learner who opted out of all notifications receives nothing."""
     from app.models.notification_preference import NotificationPreference
+
     now = datetime.now(timezone.utc)
     with db_service.get_session_maker() as session:
         preference = NotificationPreference(user_id=test_user.id, opted_out=True)
@@ -104,9 +98,7 @@ def test_dispatch_respects_global_opt_out(test_user):
 
         _create_event(session, recipient_id=str(test_user.id), due_at=now + timedelta(minutes=30))
 
-        results = dispatch_due_reminders(
-            session, now=now, lead_time=timedelta(hours=1), lead_time_label="1h_before"
-        )
+        results = dispatch_due_reminders(session, now=now, lead_time=timedelta(hours=1), lead_time_label="1h_before")
 
     assert len(results) == 0
 
@@ -114,6 +106,7 @@ def test_dispatch_respects_global_opt_out(test_user):
 def test_dispatch_respects_per_type_opt_out(test_user):
     """Verify a learner who disabled session_reminders specifically receives nothing."""
     from app.models.notification_preference import NotificationPreference
+
     now = datetime.now(timezone.utc)
     with db_service.get_session_maker() as session:
         preference = NotificationPreference(user_id=test_user.id, session_reminders=False)
@@ -122,11 +115,11 @@ def test_dispatch_respects_per_type_opt_out(test_user):
 
         _create_event(session, recipient_id=str(test_user.id), due_at=now + timedelta(minutes=30))
 
-        results = dispatch_due_reminders(
-            session, now=now, lead_time=timedelta(hours=1), lead_time_label="1h_before"
-        )
+        results = dispatch_due_reminders(session, now=now, lead_time=timedelta(hours=1), lead_time_label="1h_before")
 
     assert len(results) == 0
+
+
 def test_dispatch_sends_deadline_reminder(test_user):
     """Verify a deadline reminder is sent for a due deadline event."""
     now = datetime.now(timezone.utc)
@@ -153,9 +146,12 @@ def test_dispatch_sends_deadline_reminder(test_user):
     assert len(results) == 1
     assert results[0].status == NotificationStatus.SENT
     assert results[0].type == NotificationType.DEADLINE_REMINDER
+
+
 def test_dispatch_respects_deadline_opt_out(test_user):
     """Verify deadline reminders are suppressed when disabled."""
     from app.models.notification_preference import NotificationPreference
+
     now = datetime.now(timezone.utc)
 
     with db_service.get_session_maker() as session:
@@ -183,6 +179,8 @@ def test_dispatch_respects_deadline_opt_out(test_user):
         )
 
     assert results == []
+
+
 def test_send_email_reminder_raises_for_missing_user():
     """Verify send_email_reminder raises when recipient_id has no matching user."""
     from app.scheduler.email_delivery import send_email_reminder
@@ -217,6 +215,22 @@ def test_send_email_reminder_raises_for_user_with_no_email(test_user):
         with pytest.raises(ValueError, match="no email address"):
             send_email_reminder(notification)
 
+
 async def _async_return(value):
     """Helper: wrap a value as an awaitable, for mocking async DB methods."""
     return value
+def test_nudge_preference_blocks_nudge():
+    """Verify AT_RISK_NUDGE notifications are blocked when nudges=False."""
+    from app.prefs.model import NotificationPreference
+    from app.schemas.notification import NotificationType
+    from app.reminders.job import _is_allowed
+
+    preference = NotificationPreference(
+        user_id=1,
+        nudges=False,
+    )
+
+    assert (
+        _is_allowed(preference, NotificationType.AT_RISK_NUDGE)
+        is False
+    )

@@ -19,7 +19,6 @@ if TYPE_CHECKING:
     from app.models.notification_preference import NotificationPreference
 
 
-
 class User(BaseModel, table=True):
     """User model for storing user accounts.
 
@@ -38,12 +37,12 @@ class User(BaseModel, table=True):
     username: Optional[str] = Field(default=None, index=False)
     sessions: List["Session"] = Relationship(back_populates="user")
     notification_preference: Optional["NotificationPreference"] = Relationship(
-    back_populates="user",
-    sa_relationship_kwargs={
-        "cascade": "all, delete-orphan",
-        "single_parent": True,
+        back_populates="user",
+        sa_relationship_kwargs={
+            "cascade": "all, delete-orphan",
+            "single_parent": True,
         },
-    )  
+    )
 
     def verify_password(self, password: str) -> bool:
         """Verify if the provided password matches the hash."""

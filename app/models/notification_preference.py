@@ -12,17 +12,17 @@ if TYPE_CHECKING:
 
 class NotificationPreference(BaseModel, table=True):
     """Stores notification preferences for a learner."""
-   
+
     __tablename__ = "notification_preferences"
 
     id: int | None = Field(default=None, primary_key=True)
 
     user_id: int = Field(
-    foreign_key="user.id",
-    unique=True,
-    index=True,
-    ondelete="CASCADE",
-)
+        foreign_key="user.id",
+        unique=True,
+        index=True,
+        ondelete="CASCADE",
+    )
 
     # Global opt-out
     opted_out: bool = Field(default=False)
