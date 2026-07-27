@@ -2,6 +2,7 @@
 
 import asyncio
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 import pytest
 
@@ -285,7 +286,6 @@ def test_dispatch_marks_failed_after_retry_exhaustion(test_user):
         )
 
     assert results[0].status == NotificationStatus.FAILED
-from unittest.mock import patch
 
 def test_dispatch_updates_kpis(test_user):
     now = datetime.now(timezone.utc)
