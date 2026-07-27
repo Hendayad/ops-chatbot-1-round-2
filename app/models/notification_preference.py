@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 class NotificationPreference(BaseModel, table=True):
     """Stores notification preferences for a learner."""
 
-    __tablename__ = "notification_preferences"
+   
 
     id: int | None = Field(default=None, primary_key=True)
 
