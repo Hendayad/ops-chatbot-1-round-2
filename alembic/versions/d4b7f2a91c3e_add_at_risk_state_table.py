@@ -5,6 +5,7 @@ Revises: f11ae5c358b0
 Create Date: 2026-07-20 12:00:00.000000
 
 """
+
 from typing import Sequence, Union
 
 import sqlalchemy as sa
@@ -38,12 +39,8 @@ def upgrade() -> None:
         sa.Column("evaluated_at", sa.DateTime(), nullable=False),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index(
-        op.f("ix_atriskstaterecord_learner_id"), "atriskstaterecord", ["learner_id"], unique=False
-    )
-    op.create_index(
-        op.f("ix_atriskstaterecord_run_date"), "atriskstaterecord", ["run_date"], unique=False
-    )
+    op.create_index(op.f("ix_atriskstaterecord_learner_id"), "atriskstaterecord", ["learner_id"], unique=False)
+    op.create_index(op.f("ix_atriskstaterecord_run_date"), "atriskstaterecord", ["run_date"], unique=False)
     op.create_index(
         "uq_atriskstaterecord_learner_rundate",
         "atriskstaterecord",

@@ -86,7 +86,12 @@ def build_labeled_dataset() -> list[LabeledCase]:
                 "learner_healthy", missed_deadlines=0, inactive_days=0, progress_percent=100, feedback_score=5
             ),
             expected_at_risk=False,
-            expected_signals={"missed_deadlines": False, "inactive": False, "low_progress": False, "low_feedback": False},
+            expected_signals={
+                "missed_deadlines": False,
+                "inactive": False,
+                "low_progress": False,
+                "low_feedback": False,
+            },
         ),
         LabeledCase(
             name="missed_deadlines_only",
@@ -98,7 +103,12 @@ def build_labeled_dataset() -> list[LabeledCase]:
                 feedback_score=5,
             ),
             expected_at_risk=True,
-            expected_signals={"missed_deadlines": True, "inactive": False, "low_progress": False, "low_feedback": False},
+            expected_signals={
+                "missed_deadlines": True,
+                "inactive": False,
+                "low_progress": False,
+                "low_feedback": False,
+            },
         ),
         LabeledCase(
             name="inactive_only",
@@ -110,7 +120,12 @@ def build_labeled_dataset() -> list[LabeledCase]:
                 feedback_score=5,
             ),
             expected_at_risk=True,
-            expected_signals={"missed_deadlines": False, "inactive": True, "low_progress": False, "low_feedback": False},
+            expected_signals={
+                "missed_deadlines": False,
+                "inactive": True,
+                "low_progress": False,
+                "low_feedback": False,
+            },
         ),
         LabeledCase(
             name="low_progress_only",
@@ -122,7 +137,12 @@ def build_labeled_dataset() -> list[LabeledCase]:
                 feedback_score=5,
             ),
             expected_at_risk=True,
-            expected_signals={"missed_deadlines": False, "inactive": False, "low_progress": True, "low_feedback": False},
+            expected_signals={
+                "missed_deadlines": False,
+                "inactive": False,
+                "low_progress": True,
+                "low_feedback": False,
+            },
         ),
         LabeledCase(
             name="low_feedback_only",
@@ -134,7 +154,12 @@ def build_labeled_dataset() -> list[LabeledCase]:
                 feedback_score=THRESHOLDS.minimum_feedback_score - 0.1,
             ),
             expected_at_risk=True,
-            expected_signals={"missed_deadlines": False, "inactive": False, "low_progress": False, "low_feedback": True},
+            expected_signals={
+                "missed_deadlines": False,
+                "inactive": False,
+                "low_progress": False,
+                "low_feedback": True,
+            },
         ),
         LabeledCase(
             name="no_feedback_yet_is_not_low_feedback",
@@ -142,7 +167,12 @@ def build_labeled_dataset() -> list[LabeledCase]:
                 "learner_no_feedback", missed_deadlines=0, inactive_days=0, progress_percent=100, feedback_score=None
             ),
             expected_at_risk=False,
-            expected_signals={"missed_deadlines": False, "inactive": False, "low_progress": False, "low_feedback": False},
+            expected_signals={
+                "missed_deadlines": False,
+                "inactive": False,
+                "low_progress": False,
+                "low_feedback": False,
+            },
         ),
         LabeledCase(
             name="all_signals_combined",
@@ -166,7 +196,12 @@ def build_labeled_dataset() -> list[LabeledCase]:
                 feedback_score=THRESHOLDS.minimum_feedback_score,
             ),
             expected_at_risk=False,
-            expected_signals={"missed_deadlines": False, "inactive": False, "low_progress": False, "low_feedback": False},
+            expected_signals={
+                "missed_deadlines": False,
+                "inactive": False,
+                "low_progress": False,
+                "low_feedback": False,
+            },
         ),
     ]
 

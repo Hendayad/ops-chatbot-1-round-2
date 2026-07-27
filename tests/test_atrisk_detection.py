@@ -81,7 +81,9 @@ def test_detect_at_risk_healthy_learner_not_flagged():
 
 def test_no_feedback_yet_does_not_count_as_low_feedback():
     """A learner who hasn't left a feedback score yet shouldn't be penalized for it."""
-    progress = _progress("learner_no_fb", missed_deadlines=0, inactive_days=0, progress_percent=100, feedback_score=None)
+    progress = _progress(
+        "learner_no_fb", missed_deadlines=0, inactive_days=0, progress_percent=100, feedback_score=None
+    )
     result = detect_at_risk(progress)
     assert result.signals.low_feedback is False
     assert result.signals.at_risk is False
