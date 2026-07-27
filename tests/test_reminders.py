@@ -234,3 +234,54 @@ def test_nudge_preference_blocks_nudge():
         _is_allowed(preference, NotificationType.AT_RISK_NUDGE)
         is False
     )
+def test_dispatch_retries_until_success(test_user):
+    """Reminder dispatch retries transient failures and eventually succeeds."""
+    now = datetime.now(timezone.utc)
+
+    attempts = {"count": 0}
+
+    def flaky_delivery(notification):
+        attempts["count"] += 1
+        if attempts["count"] < 3:
+            raise RuntimeError("temporary failure")
+
+    with db_service.get_session_maker() as session:
+        _create_event(
+            session,
+            recipient_id=str(test_user.id),
+            due_at=now + timedelta(minutes=30),
+        )
+
+        results = dispatch_due_reminders(
+            session=session,
+            now=now,
+            lead_time=timedelta(hours=1),
+            lead_time_label="1h_before",
+            deliver_fn=flaky_delivery,
+        )
+
+    assert attempts["count"] == 3
+    assert results[0].status == NotificationStatus.SENT
+def test_dispatch_marks_failed_after_retry_exhaustion(test_user):
+    """Reminder dispatch marks notification FAILED after retry exhaustion."""
+    now = datetime.now(timezone.utc)
+
+    def always_fail(notification):
+        raise RuntimeError("always fails")
+
+    with db_service.get_session_maker() as session:
+        _create_event(
+            session,
+            recipient_id=str(test_user.id),
+            due_at=now + timedelta(minutes=30),
+        )
+
+        results = dispatch_due_reminders(
+            session=session,
+            now=now,
+            lead_time=timedelta(hours=1),
+            lead_time_label="1h_before",
+            deliver_fn=always_fail,
+        )
+
+    assert results[0].status == NotificationStatus.FAILED
