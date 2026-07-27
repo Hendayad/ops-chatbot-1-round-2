@@ -224,6 +224,7 @@ class Settings:
         self.SMTP_HOST = os.getenv("SMTP_HOST", "")
         self.SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
         self.SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL", "")
+        self.OPS_NOTIFICATION_EMAIL = os.getenv("OPS_NOTIFICATION_EMAIL", "ops@example.com")
 
         # Apply environment-specific settings
         self.apply_environment_settings()

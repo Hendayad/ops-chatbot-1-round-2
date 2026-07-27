@@ -35,6 +35,8 @@ def _is_allowed(preference: NotificationPreference | None, event_type: Notificat
         return preference.session_reminders
     if event_type == NotificationType.DEADLINE_REMINDER:
         return preference.deadline_reminders
+    if event_type == NotificationType.AT_RISK_NUDGE:
+        return preference.nudges
     return True
 
 
