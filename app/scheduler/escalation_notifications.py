@@ -23,7 +23,8 @@ def notify_learner_of_escalation(session, ticket: EscalationTicket, deliver_fn=N
 
     Returns None if the ticket has no user_id or the learner has opted out.
     """
-    if ticket.user_id is None:
+    user_id = getattr(ticket, "user_id", None)
+    if user_id is None:
         return None
 
     preference = _get_preference(session, ticket.user_id)

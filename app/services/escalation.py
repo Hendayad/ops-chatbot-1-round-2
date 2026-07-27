@@ -89,9 +89,15 @@ class DatabaseEscalationTrigger:
             session_id=request.session_id,
             user_id=request.user_id,
         )
-        with db_service_for_session.get_session_maker() as session:
-            notify_learner_of_escalation(session, ticket)
-            notify_ops_of_escalation(ticket, ops_email=settings.OPS_NOTIFICATION_EMAIL)
+   
+
+        try:
+            with db_service_for_session.get_session_maker() as session:
+                notify_learner_of_escalation(session, ticket)
+                notify_ops_of_escalation(ticket, ops_email=settings.OPS_NOTIFICATION_EMAIL)
+        except Exception:
+            logger.exception("escalation_notification_failed", ticket_id=getattr(ticket, "id", None))
+
 
         return EscalationTriggerResult(
             triggered=True,

@@ -33,7 +33,7 @@ def test_user():
 def _make_ticket(user_id: int) -> EscalationTicket:
     """Build a minimal EscalationTicket for testing (not persisted)."""
     return EscalationTicket(
-        id="esc_test_123",
+        id=f"esc_test_{user_id}",
         source="answering",
         reason="test reason",
         status="open",
