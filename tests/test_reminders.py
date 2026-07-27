@@ -285,3 +285,24 @@ def test_dispatch_marks_failed_after_retry_exhaustion(test_user):
         )
 
     assert results[0].status == NotificationStatus.FAILED
+from unittest.mock import patch
+
+def test_dispatch_updates_kpis(test_user):
+    now = datetime.now(timezone.utc)
+
+    with db_service.get_session_maker() as session:
+        _create_event(
+            session,
+            recipient_id=str(test_user.id),
+            due_at=now + timedelta(minutes=30),
+        )
+
+        with patch("app.reminders.job.update_reminder_kpis") as mock_kpis:
+            dispatch_due_reminders(
+                session=session,
+                now=now,
+                lead_time=timedelta(hours=1),
+                lead_time_label="1h_before",
+            )
+
+        mock_kpis.assert_called_once()
