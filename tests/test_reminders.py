@@ -220,6 +220,8 @@ def test_send_email_reminder_raises_for_user_with_no_email(test_user):
 async def _async_return(value):
     """Helper: wrap a value as an awaitable, for mocking async DB methods."""
     return value
+
+
 def test_nudge_preference_blocks_nudge():
     """Verify AT_RISK_NUDGE notifications are blocked when nudges=False."""
     from app.prefs.model import NotificationPreference
@@ -231,10 +233,9 @@ def test_nudge_preference_blocks_nudge():
         nudges=False,
     )
 
-    assert (
-        _is_allowed(preference, NotificationType.AT_RISK_NUDGE)
-        is False
-    )
+    assert _is_allowed(preference, NotificationType.AT_RISK_NUDGE) is False
+
+
 def test_dispatch_retries_until_success(test_user):
     """Reminder dispatch retries transient failures and eventually succeeds."""
     now = datetime.now(timezone.utc)
@@ -263,6 +264,8 @@ def test_dispatch_retries_until_success(test_user):
 
     assert attempts["count"] == 3
     assert results[0].status == NotificationStatus.SENT
+
+
 def test_dispatch_marks_failed_after_retry_exhaustion(test_user):
     """Reminder dispatch marks notification FAILED after retry exhaustion."""
     now = datetime.now(timezone.utc)
@@ -286,6 +289,7 @@ def test_dispatch_marks_failed_after_retry_exhaustion(test_user):
         )
 
     assert results[0].status == NotificationStatus.FAILED
+
 
 def test_dispatch_updates_kpis(test_user):
     now = datetime.now(timezone.utc)

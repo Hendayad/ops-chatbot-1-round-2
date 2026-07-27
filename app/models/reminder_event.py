@@ -1,4 +1,5 @@
 """Database model for scheduled reminder events (sessions and deadlines)."""
+
 from datetime import datetime
 
 from sqlmodel import Field

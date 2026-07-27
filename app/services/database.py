@@ -314,3 +314,7 @@ class DatabaseService:
 
 # Create a singleton instance
 database_service = DatabaseService()
+def get_session():
+    """FastAPI dependency that provides a database session."""
+    with database_service.get_session_maker() as session:
+        yield session

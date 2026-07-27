@@ -55,7 +55,6 @@ def update_support_metrics(metrics: dict) -> None:
         resolution_time_seconds.observe(ticket["estimated_resolution_seconds"])
 
 
-
 reminders_sent_total = Counter(
     "ops_reminders_sent_total",
     "Total number of reminder notifications sent",
@@ -70,9 +69,12 @@ reminder_on_time_rate = Gauge(
     "ops_reminder_on_time_rate",
     "Fraction of sent reminders delivered before their event's due_at, for the last computed batch",
 )
+
+
 def _as_naive_utc(dt: datetime) -> datetime:
     """Strip tzinfo for safe comparison against naive DB timestamps."""
     return dt.replace(tzinfo=None) if dt.tzinfo is not None else dt
+
 
 def update_reminder_kpis(notifications: list, events_by_dedup_key: dict) -> None:
     """Refresh Prometheus KPIs from a batch of dispatched reminder notifications.
@@ -94,11 +96,11 @@ def update_reminder_kpis(notifications: list, events_by_dedup_key: dict) -> None
         event = events_by_dedup_key.get(notification.dedup_key)
         if event is None:
             continue
-        if _as_naive_utc(notification.created_at) >= _as_naive_utc(event.due_at):
+        delivery_time = notification.delivered_at or notification.created_at
+        if _as_naive_utc(delivery_time) >= _as_naive_utc(event.due_at):
             late_count += 1
     reminders_sent_total.inc(len(sent))
     reminders_late_total.inc(late_count)
 
     on_time_rate = (len(sent) - late_count) / len(sent)
     reminder_on_time_rate.set(on_time_rate)
-

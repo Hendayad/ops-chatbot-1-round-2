@@ -224,7 +224,13 @@ class Settings:
         self.SMTP_HOST = os.getenv("SMTP_HOST", "")
         self.SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
         self.SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL", "")
+        self.SMTP_USERNAME = os.getenv("SMTP_USERNAME", "")
+        self.SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
         self.OPS_NOTIFICATION_EMAIL = os.getenv("OPS_NOTIFICATION_EMAIL", "ops@example.com")
+
+        # Reminder Configuration
+        self.REMINDER_LEAD_TIME_HOURS = int(os.getenv("REMINDER_LEAD_TIME_HOURS", "24")
+)
 
         # Apply environment-specific settings
         self.apply_environment_settings()

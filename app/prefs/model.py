@@ -4,16 +4,13 @@ from sqlmodel import Session, select
 
 from app.models.notification_preference import NotificationPreference
 
+
 def get_preferences(
     session: Session,
     user_id: int,
 ) -> NotificationPreference:
     """Return a user's preferences."""
-    prefs = session.exec(
-        select(NotificationPreference).where(
-            NotificationPreference.user_id == user_id
-        )
-    ).first()
+    prefs = session.exec(select(NotificationPreference).where(NotificationPreference.user_id == user_id)).first()
 
     if prefs is None:
         prefs = NotificationPreference(user_id=user_id)

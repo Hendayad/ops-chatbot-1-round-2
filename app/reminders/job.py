@@ -2,6 +2,7 @@
 
 respecting learner notification preferences and deduplicating by event + lead time.
 """
+
 from datetime import datetime, timedelta
 
 from sqlmodel import select
@@ -52,11 +53,7 @@ def get_due_events(session, now: datetime, lead_time: timedelta) -> list[Reminde
         Events due within the window [now, now + lead_time].
     """
     window_end = now + lead_time
-    statement = (
-        select(ReminderEvent)
-        .where(ReminderEvent.due_at >= now)
-        .where(ReminderEvent.due_at <= window_end)
-    )
+    statement = select(ReminderEvent).where(ReminderEvent.due_at >= now).where(ReminderEvent.due_at <= window_end)
     return session.exec(statement).all()
 
 
@@ -108,6 +105,7 @@ def dispatch_due_reminders(
     results = run_scheduled_jobs(notifications, deliver_fn=deliver_fn)
     update_reminder_kpis(results, events_by_dedup_key)
     return results
+
 
 def get_deliver_fn(channel: str):
     """Return the deliver_fn for a given delivery channel.

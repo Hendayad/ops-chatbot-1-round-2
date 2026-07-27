@@ -1,4 +1,5 @@
 """Tests for escalation-triggered notifications (learner + Ops)."""
+
 import asyncio
 
 import pytest
@@ -25,9 +26,7 @@ def cleanup_test_data():
 @pytest.fixture
 def test_user():
     """Create a fresh test user for escalation notification tests."""
-    return asyncio.run(
-        db_service.create_user(email=TEST_EMAIL, password="hashed_pw", username="escalation_tester")
-    )
+    return asyncio.run(db_service.create_user(email=TEST_EMAIL, password="hashed_pw", username="escalation_tester"))
 
 
 def _make_ticket(user_id: int) -> EscalationTicket:

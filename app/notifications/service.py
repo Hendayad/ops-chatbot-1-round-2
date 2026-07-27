@@ -5,11 +5,15 @@ import logging
 from typing import Callable, Optional
 from sqlmodel import select
 from sqlalchemy.exc import IntegrityError
+from datetime import datetime, timezone
+
 
 from app.services.database import DatabaseService
+from app.schemas.notification import NotificationType
 from app.models.notification import NotificationRecord
 from app.schemas.notification import Notification, NotificationStatus
 from app.notifications.channels import BaseNotificationChannel, OpsSlackChannel
+from app.prefs.model import get_preferences
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +27,24 @@ def is_duplicate(session, dedup_key: str) -> bool:
 def get_existing_record(session, dedup_key: str) -> Optional[NotificationRecord]:
     """Return the existing NotificationRecord for this dedup_key, if any."""
     return session.exec(select(NotificationRecord).where(NotificationRecord.dedup_key == dedup_key)).first()
+def is_notification_allowed(preference, notification_type) -> bool:
+    """Check whether a notification type is allowed by user preferences."""
+    if preference is None:
+        return True
 
+    if preference.opted_out:
+        return False
+
+    if notification_type ==  NotificationType.SESSION_REMINDER:
+        return preference.session_reminders
+
+    if notification_type ==  NotificationType.DEADLINE_REMINDER:
+        return preference.deadline_reminders
+
+    if notification_type ==  NotificationType.AT_RISK_NUDGE:
+        return preference.nudges
+
+    return True
 
 def send_notification(
     notification: Notification,
@@ -73,6 +94,18 @@ def send_notification(
         if record is None:
             notification.status = NotificationStatus.FAILED
             return notification
+        if notification.recipient_id.isdigit():
+            preference = get_preferences(
+                session,
+                int(notification.recipient_id),
+            )
+
+            if not is_notification_allowed(
+                preference,
+                notification.type,
+            ):
+                notification.status = NotificationStatus.SKIPPED
+                return notification
 
         if deliver_action is not None:
             try:
@@ -84,6 +117,7 @@ def send_notification(
                 raise exc
 
         notification.status = NotificationStatus.SENT
+        notification.delivered_at = datetime.now(timezone.utc)
         record.status = NotificationStatus.SENT
         session.add(record)
         session.commit()

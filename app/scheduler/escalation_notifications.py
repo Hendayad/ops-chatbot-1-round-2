@@ -3,6 +3,7 @@
 Links the escalation trigger flow (app/services/escalation.py) to the
 existing idempotent notification pipeline (app/scheduler/runner.py).
 """
+
 from sqlmodel import select
 
 from app.models.escalation_ticket import EscalationTicket
@@ -27,12 +28,12 @@ def notify_learner_of_escalation(session, ticket: EscalationTicket, deliver_fn=N
     if user_id is None:
         return None
 
-    preference = _get_preference(session, ticket.user_id)
+    preference = _get_preference(session, user_id)
     if preference is not None and preference.opted_out:
         return None
 
     notification = Notification(
-        recipient_id=ticket.user_id,
+        recipient_id=user_id,
         type=NotificationType.FEEDBACK_FOLLOWUP,
         payload=NotificationPayload(
             title="Your issue has been escalated",
