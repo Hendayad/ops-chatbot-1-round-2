@@ -1,4 +1,14 @@
-"""Database model for scheduled reminder events (sessions and deadlines)."""
+"""Database model for scheduled reminder events (sessions and deadlines).
+
+ReminderEvent is the scheduler's input contract.
+
+This module does not create reminder events. It consumes ReminderEvent
+records produced by the domain responsible for schedulable learner
+activities (for example, future learning-session or deadline features).
+
+The reminder scheduler queries these persisted events and applies
+notification preferences, deduplication, and delivery.
+"""
 
 from datetime import datetime
 

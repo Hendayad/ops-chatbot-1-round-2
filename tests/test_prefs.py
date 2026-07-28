@@ -118,3 +118,23 @@ def test_requires_auth():
     response = client.get("/api/v1/notifications/preferences")
 
     assert response.status_code in (401, 403)
+
+
+def test_update_preferences_rejects_invalid_type(authenticated_user):
+    response = client.put(
+        "/api/v1/notifications/preferences",
+        json={
+            "opted_out": "not-a-bool",
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_update_preferences_rejects_invalid_payload(authenticated_user):
+    response = client.put(
+        "/api/v1/notifications/preferences",
+        json={"session_reminders": "abc"},
+    )
+
+    assert response.status_code == 422
