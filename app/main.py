@@ -2,6 +2,7 @@
 
 from contextlib import asynccontextmanager
 from datetime import datetime
+from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import (
     FastAPI,
@@ -10,7 +11,7 @@ from fastapi import (
 )
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
@@ -150,6 +151,35 @@ app.add_middleware(
 
 # Include API router
 app.include_router(api_router, prefix=settings.API_V1_STR)
+
+_STATIC_DIR = Path(__file__).parent / "static"
+
+
+@app.get("/dashboard", response_class=HTMLResponse, include_in_schema=False)
+async def atrisk_dashboard() -> HTMLResponse:
+    """Serve the At-Risk Ops dashboard (PRD F3.3) as a static page.
+
+    The page itself is public and carries no data or secrets, just the
+    HTML/CSS/JS shell -- same pattern as /docs being publicly loadable.
+    Protection lives at the API layer: every /api/v1/atrisk/* call the
+    page makes still requires the user to log in and hold a valid
+    Bearer token, checked per-request by get_current_user.
+    """
+    return HTMLResponse((_STATIC_DIR / "atrisk_dashboard.html").read_text(encoding="utf-8"))
+
+
+@app.get("/chat-viewer", response_class=HTMLResponse, include_in_schema=False)
+async def chat_viewer() -> HTMLResponse:
+    """Serve the learner chat viewer as a static page.
+
+    Lets you log in as any learner account and see their real chat
+    history -- including any at-risk nudge LearnerChatChannel appended --
+    without needing curl/Postman. Same public-shell-plus-token-gated-API
+    pattern as /dashboard: this route returns no data itself, every
+    /api/v1/auth/* and /api/v1/chatbot/* call the page makes still
+    requires a valid Bearer token.
+    """
+    return HTMLResponse((_STATIC_DIR / "chat_viewer.html").read_text(encoding="utf-8"))
 
 
 @app.get("/")
