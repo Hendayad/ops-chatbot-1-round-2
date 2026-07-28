@@ -229,8 +229,7 @@ class Settings:
         self.OPS_NOTIFICATION_EMAIL = os.getenv("OPS_NOTIFICATION_EMAIL", "ops@example.com")
 
         # Reminder Configuration
-        self.REMINDER_LEAD_TIME_HOURS = int(os.getenv("REMINDER_LEAD_TIME_HOURS", "24")
-)
+        self.REMINDER_LEAD_TIME_HOURS = int(os.getenv("REMINDER_LEAD_TIME_HOURS", "24"))
 
         # Apply environment-specific settings
         self.apply_environment_settings()

@@ -61,12 +61,18 @@ def get_resolution_time_estimate(session, start: datetime, end: datetime) -> lis
     tracking exists.
     """
     statement = (
-    select(
-        cast(ColumnElement, EscalationTicket.id).label("ticket_id"),
-        cast(ColumnElement, EscalationTicket.created_at).label("ticket_created_at"),
-        cast(ColumnElement, ChatSession.created_at).label("session_created_at"),
-    )
-        .join(ChatSession,cast(ColumnElement,EscalationTicket.session_id == ChatSession.id,),)
+        select(
+            cast(ColumnElement, EscalationTicket.id).label("ticket_id"),
+            cast(ColumnElement, EscalationTicket.created_at).label("ticket_created_at"),
+            cast(ColumnElement, ChatSession.created_at).label("session_created_at"),
+        )
+        .join(
+            ChatSession,
+            cast(
+                ColumnElement,
+                EscalationTicket.session_id == ChatSession.id,
+            ),
+        )
         .where(EscalationTicket.created_at >= start)
         .where(EscalationTicket.created_at <= end)
     )

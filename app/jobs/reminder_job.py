@@ -1,3 +1,20 @@
+"""Producer contract.
+
+A future domain producer is responsible for inserting ReminderEvent rows
+with the following fields:
+
+- recipient_id: learner receiving the reminder
+- type: NotificationType.SESSION_REMINDER or DEADLINE_REMINDER
+- due_at: UTC datetime of the scheduled event
+- title: human-readable event title
+
+Once persisted, the scheduler discovers these events automatically.
+"""
+
+# TODO:
+# Wire ReminderEvent creation into the future learning-session/deadline
+# domain once that feature exists. This module intentionally does not
+# create ReminderEvent records itself.
 from datetime import datetime, timedelta, timezone
 
 

@@ -150,10 +150,7 @@ class TicketService:
         message = (
             f"Escalation stored and Operations notified with ticket ID {stored.id}."
             if notification_delivered
-            else (
-                f"Escalation stored with ticket ID {stored.id}; "
-                "the Operations notification could not be confirmed."
-            )
+            else (f"Escalation stored with ticket ID {stored.id}; the Operations notification could not be confirmed.")
         )
         return EscalationTriggerResult(
             triggered=True,

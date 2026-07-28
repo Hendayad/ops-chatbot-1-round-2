@@ -27,6 +27,8 @@ def is_duplicate(session, dedup_key: str) -> bool:
 def get_existing_record(session, dedup_key: str) -> Optional[NotificationRecord]:
     """Return the existing NotificationRecord for this dedup_key, if any."""
     return session.exec(select(NotificationRecord).where(NotificationRecord.dedup_key == dedup_key)).first()
+
+
 def is_notification_allowed(preference, notification_type) -> bool:
     """Check whether a notification type is allowed by user preferences."""
     if preference is None:
@@ -35,16 +37,17 @@ def is_notification_allowed(preference, notification_type) -> bool:
     if preference.opted_out:
         return False
 
-    if notification_type ==  NotificationType.SESSION_REMINDER:
+    if notification_type == NotificationType.SESSION_REMINDER:
         return preference.session_reminders
 
-    if notification_type ==  NotificationType.DEADLINE_REMINDER:
+    if notification_type == NotificationType.DEADLINE_REMINDER:
         return preference.deadline_reminders
 
-    if notification_type ==  NotificationType.AT_RISK_NUDGE:
+    if notification_type == NotificationType.AT_RISK_NUDGE:
         return preference.nudges
 
     return True
+
 
 def send_notification(
     notification: Notification,

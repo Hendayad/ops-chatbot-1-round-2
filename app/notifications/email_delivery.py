@@ -27,7 +27,6 @@ def send_email_reminder(notification: Notification) -> None:
     if not user.email:
         raise ValueError("User has no email address")
 
-
     msg = EmailMessage()
     msg["Subject"] = notification.payload.title
     msg["From"] = settings.SMTP_FROM_EMAIL
@@ -53,7 +52,6 @@ def send_email_reminder(notification: Notification) -> None:
         except Exception as e:
             print("LOGIN FAILED:", repr(e))
             raise
-        
 
         server.send_message(msg)
         print("Email sent!")

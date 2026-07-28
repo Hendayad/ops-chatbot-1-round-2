@@ -72,7 +72,7 @@ async def lifespan(app: FastAPI):
         memory_service.initialize()
     except Exception as e:
         logger.exception("memory_service_pre_warm_failed", error=str(e))
-     # Start background scheduler
+    # Start background scheduler
     try:
         start_scheduler()
     except Exception as e:
@@ -99,7 +99,6 @@ async def lifespan(app: FastAPI):
         logger.info("connection_pool_closed")
 
     logger.info("application_shutdown")
-
 
 
 app = FastAPI(
