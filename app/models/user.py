@@ -26,6 +26,10 @@ class User(BaseModel, table=True):
         email: User's email (unique)
         hashed_password: Bcrypt hashed password
         username: Optional display name for the user
+        is_ops: Whether this user is authorized for Ops-only endpoints
+            (e.g. the at-risk dashboard APIs) -- defaults False for every
+            new account, so authorization is opt-in per user rather than
+            implicit from just being logged in.
         created_at: When the user was created
         sessions: Relationship to user's chat sessions
     """
@@ -34,6 +38,10 @@ class User(BaseModel, table=True):
     email: str = Field(unique=True, index=True)
     hashed_password: str
     username: Optional[str] = Field(default=None, index=False)
+    is_ops: bool = Field(
+        default=False,
+        description="Ops/admin authorization flag required for Ops-only endpoints (e.g. /atrisk/*).",
+    )
     sessions: List["Session"] = Relationship(back_populates="user")
 
     def verify_password(self, password: str) -> bool:

@@ -11,17 +11,33 @@ Actual delivery reuses the existing idempotent notification service
 at-risk nudges get the same dedup_key + tenacity retry guarantees that
 session/deadline reminders already rely on — no new delivery machinery to
 trust.
+
+Frequency cap: rolling, not bucketed. `_nudge_eligible` queries the
+learner's most recent SENT AT_RISK_NUDGE notification and compares its
+timestamp to now, so "don't nudge more than once per N days" is measured
+from the last actual send, not from a fixed calendar bucket. (An earlier
+version bucketed by `evaluated_at.toordinal() // frequency_days`, which
+allowed two nudges on adjacent calendar days whenever they landed in
+different buckets — e.g. day 6 and day 7 with a 7-day window. See the
+boundary regression tests in tests/test_atrisk_detection.py.) dedup_key
+still exists, but now only guards same-day idempotency (a job retried the
+same day reuses the same key instead of reserving a new one) — the actual
+frequency enforcement lives entirely in `_nudge_eligible`.
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from datetime import date
+from datetime import UTC, datetime, timedelta
 from typing import Optional
 
+from sqlmodel import select
+
 from app.atrisk.detector import DetectionResult
+from app.models.notification import NotificationRecord
 from app.scheduler.runner import run_notification
-from app.schemas.notification import Notification, NotificationPayload, NotificationType
+from app.schemas.notification import Notification, NotificationPayload, NotificationStatus, NotificationType
+from app.services.database import DatabaseService
 
 # F2.4: frequency cap — don't nudge the same learner more than once per this many days.
 NUDGE_FREQUENCY_DAYS_DEFAULT = 7
@@ -58,8 +74,9 @@ class NoOpNotificationSender(NotificationSender):
 class InMemoryNotificationSender(NotificationSender):
     """Test/dev sender that records every notification actually delivered.
 
-    Used by evals/atrisk_suite.py and tests/test_atrisk.py to assert on
-    deduplication without depending on a real notification channel.
+    Used by evals/atrisk_suite.py and tests/test_atrisk_detection.py to
+    assert on deduplication without depending on a real notification
+    channel.
     """
 
     def __init__(self) -> None:
@@ -71,47 +88,65 @@ class InMemoryNotificationSender(NotificationSender):
         self.sent.append(notification)
 
 
-def _nudge_period_bucket(evaluated_at: date, frequency_days: int) -> int:
-    """Bucket a date into a period index of `frequency_days` length.
+def _last_sent_at(learner_id: str) -> Optional[datetime]:
+    """Return the timestamp of this learner's most recent SENT at-risk nudge, if any.
 
-    Two evaluations that fall in the same bucket produce the same
-    dedup_key for a given learner, which is how the frequency cap rides on
-    the existing dedup_key/is_duplicate machinery instead of needing a
-    separate "when did we last nudge this learner" lookup.
-
-    Known limitation: because buckets are aligned to the epoch rather than
-    to each learner's first nudge, two nudges can land as little as one day
-    apart if they fall on either side of a bucket boundary — this guarantees
-    "at most one nudge per `frequency_days`-day bucket," not a strict
-    rolling "at least `frequency_days` days since the last nudge." If a
-    strict rolling gap is required, replace this with a query against the
-    learner's most recent SENT AT_RISK_NUDGE notification instead.
+    Uses NotificationRecord.created_at as the "sent at" timestamp: in
+    practice a record is created and marked SENT within the same delivery
+    attempt (see app.notifications.service.send_notification), so
+    created_at closely tracks the actual send time without needing a
+    dedicated column/migration.
     """
-    return evaluated_at.toordinal() // frequency_days
+    db_service = DatabaseService()
+    with db_service.get_session_maker() as session:
+        record = session.exec(
+            select(NotificationRecord)
+            .where(
+                NotificationRecord.recipient_id == learner_id,
+                NotificationRecord.type == NotificationType.AT_RISK_NUDGE,
+                NotificationRecord.status == NotificationStatus.SENT,
+            )
+            .order_by(NotificationRecord.created_at.desc())  # pyright: ignore[reportAttributeAccessIssue]
+        ).first()
+        if record is None:
+            return None
+        sent_at = record.created_at
+        return sent_at if sent_at.tzinfo is not None else sent_at.replace(tzinfo=UTC)
 
 
-def build_nudge(
-    result: DetectionResult,
-    *,
-    frequency_days: int = NUDGE_FREQUENCY_DAYS_DEFAULT,
-) -> Notification:
+def _nudge_eligible(learner_id: str, frequency_days: int, now: datetime) -> bool:
+    """True if `learner_id` hasn't received a SENT at-risk nudge within the last `frequency_days` days.
+
+    This is a rolling window measured from the actual last send (see
+    `_last_sent_at`), not a fixed calendar bucket — see module docstring
+    for why the earlier bucket-based approach could send two nudges a
+    single calendar day apart.
+    """
+    last_sent_at = _last_sent_at(learner_id)
+    if last_sent_at is None:
+        return True
+    effective_now = now if now.tzinfo is not None else now.replace(tzinfo=UTC)
+    return (effective_now - last_sent_at) >= timedelta(days=frequency_days)
+
+
+def build_nudge(result: DetectionResult) -> Notification:
     """Build the deduplicated Notification for one at-risk detection result.
 
-    dedup_key encodes the learner, the notification type, and the
-    frequency-cap bucket — so the same learner staying at_risk across
-    daily detector runs within the cap window produces the SAME dedup_key,
-    and is skipped as a duplicate by app.notifications.service instead of
-    being re-nudged every single day.
+    dedup_key is scoped to the learner + calendar day, so re-running the
+    detector job multiple times on the same day (retries, manual re-runs)
+    reuses the same reservation instead of creating a new one — this is a
+    same-day idempotency guard, not the frequency cap. The actual "don't
+    nudge more than once per N days" enforcement happens in
+    `_nudge_eligible`, checked by `send_at_risk_nudges` before this
+    function is even called.
 
     Args:
         result: The (at-risk) detection result to build a nudge for.
-        frequency_days: Width of the frequency-cap window, in days.
 
     Returns:
         A Notification ready to hand to app.scheduler.runner.run_notification.
     """
-    bucket = _nudge_period_bucket(result.evaluated_at.date(), frequency_days)
-    dedup_key = f"atrisk:{result.learner_id}:nudge:{bucket}"
+    dedup_key = f"atrisk:{result.learner_id}:nudge:{result.evaluated_at.date().isoformat()}"
     return Notification(
         recipient_id=result.learner_id,
         type=NotificationType.AT_RISK_NUDGE,
@@ -141,12 +176,17 @@ def send_at_risk_nudges(
 ) -> list[Notification]:
     """Send deduplicated, frequency-capped nudges for every at-risk result.
 
-    Only DetectionResults with signals.at_risk=True produce a nudge.
-    Delivery goes through the existing idempotent notification service +
-    tenacity retry (app.scheduler.runner.run_notification): a duplicate
-    dedup_key within the frequency window is skipped rather than resent,
-    and a failed delivery is retried with backoff before being marked
-    FAILED instead of crashing the batch.
+    Only DetectionResults with signals.at_risk=True produce a nudge
+    attempt. Before any delivery is attempted, `_nudge_eligible` checks
+    whether this learner already received a SENT at-risk nudge within the
+    last `frequency_days` days (a real rolling window, not a calendar
+    bucket — see module docstring); if so, the notification is returned as
+    SKIPPED without ever reaching the sender or the notification service.
+    Otherwise delivery goes through the existing idempotent notification
+    service + tenacity retry (app.scheduler.runner.run_notification): a
+    same-day duplicate dedup_key is skipped rather than resent, and a
+    failed delivery is retried with backoff before being marked FAILED
+    instead of crashing the batch.
 
     Args:
         results: Detection results from app.atrisk.detector.run_detector.
@@ -163,6 +203,13 @@ def send_at_risk_nudges(
     for result in results:
         if not result.signals.at_risk:
             continue
-        notification = build_nudge(result, frequency_days=frequency_days)
+
+        notification = build_nudge(result)
+
+        if not _nudge_eligible(result.learner_id, frequency_days, result.evaluated_at):
+            notification.status = NotificationStatus.SKIPPED
+            outcomes.append(notification)
+            continue
+
         outcomes.append(run_notification(notification, deliver_fn=active_sender.send))
     return outcomes

@@ -34,6 +34,10 @@ class AtRiskStateRecord(ORMBaseModel, table=True):
     Attributes:
         id: Primary key.
         learner_id: The learner this record is for.
+        cohort_id: The learner's cohort at evaluation time. Nullable
+            because rows persisted before this column existed have no
+            value -- those rows simply won't match any cohort-scoped
+            query, which is the correct behavior for orphaned legacy data.
         run_date: Calendar date (UTC) the detector ran for. Combined with
             learner_id, this is the idempotency key — re-running the
             detector job for the same day updates this row instead of
@@ -55,6 +59,7 @@ class AtRiskStateRecord(ORMBaseModel, table=True):
 
     id: Optional[int] = Field(default=None, primary_key=True)
     learner_id: str = Field(index=True)
+    cohort_id: Optional[str] = Field(default=None, index=True)
     run_date: date = Field(index=True)
     at_risk: bool
     score: int
@@ -116,6 +121,7 @@ def upsert_at_risk_state(result: DetectionResult, run_date: Optional[date] = Non
         if record is None:
             record = AtRiskStateRecord(
                 learner_id=result.learner_id,
+                cohort_id=result.cohort_id,
                 run_date=effective_run_date,
                 at_risk=signals.at_risk,
                 score=signals.score,
@@ -148,6 +154,7 @@ def upsert_at_risk_state(result: DetectionResult, run_date: Optional[date] = Non
 
         # Update path: either the record already existed, or we just lost
         # the insert race above. Either way, make it reflect this evaluation.
+        record.cohort_id = result.cohort_id
         record.at_risk = signals.at_risk
         record.score = signals.score
         record.missed_deadlines = signals.missed_deadlines
@@ -186,15 +193,24 @@ def get_history(learner_id: str, limit: int = 30) -> list[AtRiskStateRecord]:
         return list(rows)
 
 
-def get_latest_run_date() -> Optional[date]:
-    """Return the most recent run_date with any persisted state, if any."""
+def get_latest_run_date(cohort_id: Optional[str] = None) -> Optional[date]:
+    """Return the most recent run_date with any persisted state, if any.
+
+    Args:
+        cohort_id: When given, only considers that cohort's state -- the
+            globally latest date can belong to a different cohort, which
+            would otherwise mislead a cohort-scoped caller (e.g.
+            app.api.v1.atrisk's trend endpoint) into asking for a day that
+            has no data for the cohort it actually cares about.
+    """
     db_service = DatabaseService()
     with db_service.get_session_maker() as session:
-        return session.exec(
-            select(AtRiskStateRecord.run_date).order_by(  # pyright: ignore[reportCallIssue, reportArgumentType]
-                AtRiskStateRecord.run_date.desc()  # pyright: ignore[reportAttributeAccessIssue]
-            )
-        ).first()
+        query = select(AtRiskStateRecord.run_date).order_by(  # pyright: ignore[reportCallIssue, reportArgumentType]
+            AtRiskStateRecord.run_date.desc()  # pyright: ignore[reportAttributeAccessIssue]
+        )
+        if cohort_id is not None:
+            query = query.where(AtRiskStateRecord.cohort_id == cohort_id)
+        return session.exec(query).first()
 
 
 def _aggregate_from_records(target_date: date, records: list[AtRiskStateRecord]) -> AtRiskAggregate:
@@ -213,29 +229,39 @@ def _aggregate_from_records(target_date: date, records: list[AtRiskStateRecord])
     )
 
 
-def get_aggregate(run_date: Optional[date] = None) -> AtRiskAggregate:
+def get_aggregate(run_date: Optional[date] = None, cohort_id: Optional[str] = None) -> AtRiskAggregate:
     """Read-only aggregate of at-risk state for one run_date, for Ops dashboards.
 
     Defaults to the most recent run_date with any persisted state.
 
     Args:
         run_date: The date to aggregate. Defaults to the latest available.
+        cohort_id: When given, scopes the aggregate to that cohort only --
+            omitting it combines every cohort's state, which is correct
+            for internal/test callers but not for an Ops-facing endpoint
+            serving more than one cohort (see app.api.v1.atrisk, which
+            always passes this).
 
     Returns:
         AtRiskAggregate with totals and a per-signal breakdown. All counts
         are zero if no state has been persisted yet.
     """
+    target_date = run_date or get_latest_run_date(cohort_id=cohort_id)
+    if target_date is None:
+        return _aggregate_from_records(datetime.now(UTC).date(), [])
+
     db_service = DatabaseService()
     with db_service.get_session_maker() as session:
-        target_date = run_date or get_latest_run_date()
-        if target_date is None:
-            return _aggregate_from_records(datetime.now(UTC).date(), [])
-
-        records = session.exec(select(AtRiskStateRecord).where(AtRiskStateRecord.run_date == target_date)).all()
+        query = select(AtRiskStateRecord).where(AtRiskStateRecord.run_date == target_date)
+        if cohort_id is not None:
+            query = query.where(AtRiskStateRecord.cohort_id == cohort_id)
+        records = session.exec(query).all()
         return _aggregate_from_records(target_date, list(records))
 
 
-def get_aggregate_trend(start_date: date, end_date: Optional[date] = None) -> list[AtRiskAggregate]:
+def get_aggregate_trend(
+    start_date: date, end_date: Optional[date] = None, cohort_id: Optional[str] = None
+) -> list[AtRiskAggregate]:
     """Read-only day-by-day at-risk trend for the Ops dashboards (PRD F3.3 / M05-T1 req 4).
 
     Returns one AtRiskAggregate per calendar day in [start_date, end_date],
@@ -249,6 +275,8 @@ def get_aggregate_trend(start_date: date, end_date: Optional[date] = None) -> li
         start_date: First day of the trend window (inclusive).
         end_date: Last day of the trend window (inclusive). Defaults to
             today (UTC) if omitted.
+        cohort_id: When given, scopes every day's aggregate to that cohort
+            only (see get_aggregate's docstring for why this matters).
 
     Returns:
         One AtRiskAggregate per day in the window, oldest first. Raises
@@ -260,12 +288,13 @@ def get_aggregate_trend(start_date: date, end_date: Optional[date] = None) -> li
 
     db_service = DatabaseService()
     with db_service.get_session_maker() as session:
-        records = session.exec(
-            select(AtRiskStateRecord).where(
-                AtRiskStateRecord.run_date >= start_date,
-                AtRiskStateRecord.run_date <= effective_end_date,
-            )
-        ).all()
+        query = select(AtRiskStateRecord).where(
+            AtRiskStateRecord.run_date >= start_date,
+            AtRiskStateRecord.run_date <= effective_end_date,
+        )
+        if cohort_id is not None:
+            query = query.where(AtRiskStateRecord.cohort_id == cohort_id)
+        records = session.exec(query).all()
 
     records_by_date: dict[date, list[AtRiskStateRecord]] = {}
     for record in records:
@@ -279,17 +308,29 @@ def get_aggregate_trend(start_date: date, end_date: Optional[date] = None) -> li
     return trend
 
 
-def get_at_risk_learner_ids(run_date: Optional[date] = None) -> list[str]:
-    """Read-only: learner_ids flagged at_risk for a given run_date (defaults to latest)."""
+def get_at_risk_learner_ids(run_date: Optional[date] = None, cohort_id: Optional[str] = None) -> list[str]:
+    """Read-only: learner_ids flagged at_risk for a given run_date (defaults to latest), for one cohort.
+
+    Args:
+        run_date: The date to check. Defaults to the latest available
+            (scoped to cohort_id when one is given -- see get_aggregate's
+            docstring for why the global latest date is the wrong default
+            once a cohort filter is in play).
+        cohort_id: When given, only learner_ids from that cohort are
+            returned -- omitting it returns every cohort's flagged
+            learners combined, which app.api.v1.atrisk never does.
+    """
+    target_date = run_date or get_latest_run_date(cohort_id=cohort_id)
+    if target_date is None:
+        return []
+
     db_service = DatabaseService()
     with db_service.get_session_maker() as session:
-        target_date = run_date or get_latest_run_date()
-        if target_date is None:
-            return []
-        rows = session.exec(
-            select(AtRiskStateRecord.learner_id).where(
-                AtRiskStateRecord.run_date == target_date,
-                AtRiskStateRecord.at_risk == True,  # noqa: E712 -- SQLAlchemy column comparison, not a Python bool check
-            )
-        ).all()
+        query = select(AtRiskStateRecord.learner_id).where(
+            AtRiskStateRecord.run_date == target_date,
+            AtRiskStateRecord.at_risk == True,  # noqa: E712 -- SQLAlchemy column comparison, not a Python bool check
+        )
+        if cohort_id is not None:
+            query = query.where(AtRiskStateRecord.cohort_id == cohort_id)
+        rows = session.exec(query).all()
         return list(rows)

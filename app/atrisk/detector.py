@@ -26,6 +26,7 @@ class DetectionResult(BaseModel):
     """Outcome of evaluating one learner's progress snapshot against thresholds."""
 
     learner_id: str
+    cohort_id: str
     signals: AtRiskSignals
     thresholds: RiskThresholds
     evaluated_at: datetime
@@ -77,6 +78,7 @@ def detect_at_risk(
     signals = compute_risk_signals(progress, resolved)
     return DetectionResult(
         learner_id=progress.learner_id,
+        cohort_id=progress.cohort_id,
         signals=signals,
         thresholds=resolved,
         evaluated_at=datetime.now(UTC),
