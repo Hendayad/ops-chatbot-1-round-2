@@ -456,6 +456,50 @@ class LangGraphAgent:
         state: StateSnapshot = await graph.aget_state(config=config)
         return self.__process_messages(state.values["messages"]) if state.values else []
 
+    async def append_message(self, session_id: str, message: Any) -> None:
+        """Append one message to a session's checkpointed chat history.
+
+        `GraphState.messages` (defined above) is a plain `list[Any]` with
+        no langgraph reducer attached -- there's no
+        `Annotated[list, add_messages]` on it. That means a channel update
+        for this key is a straight replace, not a merge: calling
+        `graph.aupdate_state(config, {"messages": [message]})` directly
+        would overwrite the learner's entire stored conversation with just
+        `message`, destroying their real chat history.
+
+        To append safely regardless of that (and to stay correct even if
+        a reducer is added to this field later, since re-sending unchanged
+        prior messages is a safe no-op under langgraph's message-merge
+        semantics too), this reads the full current message list first and
+        writes the full list back with `message` appended.
+
+        Used by out-of-band writers that need to insert a message into a
+        learner's chat outside of a normal turn -- e.g.
+        `app.notifications.learner_chat_channel.LearnerChatChannel`
+        delivering an at-risk nudge.
+
+        `as_node="chat"` is required on the `aupdate_state` call below:
+        this graph has two nodes ("chat" and "tool_call") that can both
+        write to the "messages" channel, so an out-of-band update with no
+        node context raises `InvalidUpdateError: Ambiguous update, specify
+        as_node`. "chat" is correct here because an out-of-band nudge is
+        conceptually an assistant turn, same as the real "chat" node's
+        `Command(update={"messages": [response_message]})` -- it also
+        matches how `_chat` routes to `END` for a plain-text AIMessage
+        (only tool calls route to "tool_call"), so this leaves the graph
+        in the same "finished turn, ready for the next one" state a normal
+        assistant reply would.
+
+        Args:
+            session_id: The chat session to append to (== thread_id).
+            message: A BaseMessage (e.g. AIMessage) to append.
+        """
+        graph = await self._get_graph()
+        config: RunnableConfig = {"configurable": {"thread_id": session_id}}
+        state: StateSnapshot = await graph.aget_state(config=config)
+        existing_messages = list(state.values.get("messages", [])) if state.values else []
+        await graph.aupdate_state(config, {"messages": existing_messages + [message]}, as_node="chat")
+
     def __process_messages(self, messages: list[BaseMessage]) -> list[Any]:
         openai_style_messages = convert_to_openai_messages(messages)
         # keep just assistant and user messages

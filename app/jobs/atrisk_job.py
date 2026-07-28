@@ -31,6 +31,7 @@ from app.atrisk.detector import DetectionResult, run_detector
 from app.atrisk.nudges import NoOpNotificationSender, NotificationSender, send_at_risk_nudges
 from app.atrisk.state import AtRiskAggregate, get_aggregate, upsert_at_risk_state
 from app.core.logging import logger
+from app.notifications.learner_chat_channel import LearnerChatChannel
 from app.schemas.notification import NotificationStatus
 from app.schemas.progress import LearnerProgress
 from app.schemas.signals import RiskThresholds
@@ -84,8 +85,11 @@ def run_at_risk_job(
         threshold_overrides: Optional per-learner RiskThresholds overrides.
         sender: NotificationSender used to deliver nudges. Defaults to a
             no-op sender so the job never crashes for lack of a configured
-            channel — wire in the real channel once the notification lane
-            is chosen.
+            channel — pass sender=LearnerChatChannel() (or construct your
+            own NotificationSender) to actually deliver nudges. Kept as an
+            explicit opt-in rather than the default so existing callers
+            (tests, ad-hoc runs) don't start sending real chat messages
+            without asking for it.
         run_date: Overrides "today" (UTC). Mainly for deterministic tests
             and for manually backfilling a specific day.
 
@@ -143,4 +147,9 @@ def _no_progress_configured() -> list[LearnerProgress]:
 
 
 if __name__ == "__main__":
-    run_at_risk_job(progress_provider=_no_progress_configured)
+    # LearnerChatChannel is the real, working nudge channel (in-chat delivery,
+    # per docs/atrisk-nudge-delivery-proposal.md) -- pass it explicitly here so
+    # a manual/demo run of this job actually delivers nudges instead of
+    # discarding them. A no-op default stays on `run_at_risk_job` itself so
+    # tests and other callers don't send real messages unless they ask to.
+    run_at_risk_job(progress_provider=_no_progress_configured, sender=LearnerChatChannel())
