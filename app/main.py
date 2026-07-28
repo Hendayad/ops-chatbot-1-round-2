@@ -69,7 +69,7 @@ async def lifespan(app: FastAPI):
     # Pre-warm mem0 AsyncMemory: initializes pgvector connection and schema check
     # so the first search() cache miss or add() doesn't pay the ~130ms cold-init cost
     try:
-        await memory_service.initialize()
+        memory_service.initialize()
     except Exception as e:
         logger.exception("memory_service_pre_warm_failed", error=str(e))
      # Start background scheduler
