@@ -23,9 +23,7 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     """Upgrade schema."""
     op.add_column("atriskstaterecord", sa.Column("cohort_id", sqlmodel.sql.sqltypes.AutoString(), nullable=True))
-    op.create_index(
-        op.f("ix_atriskstaterecord_cohort_id"), "atriskstaterecord", ["cohort_id"], unique=False
-    )
+    op.create_index(op.f("ix_atriskstaterecord_cohort_id"), "atriskstaterecord", ["cohort_id"], unique=False)
 
     op.add_column(
         "user",
