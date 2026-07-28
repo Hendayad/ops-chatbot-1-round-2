@@ -2,7 +2,7 @@
 
 import logging
 from typing import Protocol
-from app.scheduler.escalation_notifications import notify_learner_of_escalation, notify_ops_of_escalation
+from app.notifications.escalation_notifications import notify_learner_of_escalation, notify_ops_of_escalation
 from app.services.database import database_service as db_service_for_session
 from app.core.config import settings
 

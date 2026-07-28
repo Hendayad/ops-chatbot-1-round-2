@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from sqlmodel import select
 from app.reminders.dedupe import build_dedup_key
 from app.models.reminder_event import ReminderEvent
-from app.scheduler.email_delivery import send_email_reminder
+from app.notifications.email_delivery import send_email_reminder
 from app.prefs.model import NotificationPreference
 from app.schemas.notification import Notification, NotificationPayload, NotificationType
 from app.scheduler.runner import run_scheduled_jobs

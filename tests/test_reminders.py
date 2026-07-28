@@ -184,7 +184,7 @@ def test_dispatch_respects_deadline_opt_out(test_user):
 
 def test_send_email_reminder_raises_for_missing_user():
     """Verify send_email_reminder raises when recipient_id has no matching user."""
-    from app.scheduler.email_delivery import send_email_reminder
+    from app.notifications.email_delivery import send_email_reminder
     from app.schemas.notification import Notification, NotificationPayload, NotificationType
 
     notification = Notification(
@@ -201,7 +201,7 @@ def test_send_email_reminder_raises_for_missing_user():
 def test_send_email_reminder_raises_for_user_with_no_email(test_user):
     """Verify send_email_reminder raises if the resolved user has no email set."""
     from unittest.mock import patch, AsyncMock
-    from app.scheduler.email_delivery import send_email_reminder
+    from app.notifications.email_delivery import send_email_reminder
     from app.schemas.notification import Notification, NotificationPayload, NotificationType
 
     notification = Notification(
@@ -212,7 +212,7 @@ def test_send_email_reminder_raises_for_user_with_no_email(test_user):
     )
 
     fake_user = type(test_user)(id=test_user.id, email="", hashed_password="x")
-    with patch("app.scheduler.email_delivery.db_service.get_user", new=AsyncMock(return_value=fake_user)):
+    with patch("app.notifications.email_delivery.db_service.get_user", new=AsyncMock(return_value=fake_user)):
         with pytest.raises(ValueError, match="no email address"):
             send_email_reminder(notification)
 

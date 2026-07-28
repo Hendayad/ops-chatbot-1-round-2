@@ -7,7 +7,7 @@ import pytest
 from app.models.notification_preference import NotificationPreference
 from app.models.escalation_ticket import EscalationTicket
 from app.schemas.notification import NotificationStatus
-from app.scheduler.escalation_notifications import (
+from app.notifications.escalation_notifications import (
     notify_learner_of_escalation,
     notify_ops_of_escalation,
 )
