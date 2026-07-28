@@ -11,7 +11,7 @@ from app.api.dashboards import router as dashboards_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.chatbot import router as chatbot_router
 from app.core.logging import logger
-from app.api.reminder_api import router as reminders_router
+
 api_router = APIRouter()
 
 # Include routers
@@ -20,7 +20,7 @@ api_router.include_router(auth_router, prefix="/auth", tags=["Auth"])
 api_router.include_router(chatbot_router, prefix="/chatbot", tags=["Chatbot"])
 api_router.include_router(dashboards_router, prefix="/dashboards", tags=["Dashboards"])
 api_router.include_router(notification_preferences_router, prefix="/notifications", tags=["Notification Preferences"])
-api_router.include_router(reminders_router,prefix="/reminders",tags=["Reminders"])
+
 
 
 @api_router.get("/health")
