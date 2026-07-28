@@ -1,7 +1,9 @@
-"""One-off demo script: prove LearnerChatChannel delivers a real, safely-appended
-in-chat nudge for REAL learners (not the fabricated ids from
-seed_atrisk_demo_data.py, which don't resolve to a real chat session --
-see app/notifications/learner_chat_channel.py's module docstring for why).
+"""One-off demo script: prove LearnerChatChannel delivers a real nudge.
+
+Proves the nudge is safely appended in-chat for REAL learners (not the
+fabricated ids from seed_atrisk_demo_data.py, which don't resolve to a
+real chat session -- see app/notifications/learner_chat_channel.py's
+module docstring for why).
 
 What it does, step by step, all through the real app code paths (run this
 with the db container up and migrations applied, same as

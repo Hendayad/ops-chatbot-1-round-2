@@ -172,8 +172,7 @@ class LearnerChatChannel(NotificationSender):
         session_id = self._resolve_session(notification.recipient_id)
         if not session_id:
             raise NoSessionFoundError(
-                f"No chat session found for learner_id={notification.recipient_id!r}; "
-                "cannot deliver in-chat nudge."
+                f"No chat session found for learner_id={notification.recipient_id!r}; cannot deliver in-chat nudge."
             )
 
         loop = self._get_loop()

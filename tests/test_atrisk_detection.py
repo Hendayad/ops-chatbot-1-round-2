@@ -223,9 +223,7 @@ def test_send_at_risk_nudges_blocks_adjacent_day_nudge_within_frequency_window()
         )
         session.commit()
 
-    progress = _progress(
-        learner_id, missed_deadlines=5, inactive_days=0, progress_percent=100, feedback_score=5
-    )
+    progress = _progress(learner_id, missed_deadlines=5, inactive_days=0, progress_percent=100, feedback_score=5)
     results = run_detector([progress])
     sender = InMemoryNotificationSender()
 
@@ -255,9 +253,7 @@ def test_send_at_risk_nudges_allows_nudge_once_frequency_window_elapses():
         )
         session.commit()
 
-    progress = _progress(
-        learner_id, missed_deadlines=5, inactive_days=0, progress_percent=100, feedback_score=5
-    )
+    progress = _progress(learner_id, missed_deadlines=5, inactive_days=0, progress_percent=100, feedback_score=5)
     results = run_detector([progress])
     sender = InMemoryNotificationSender()
 
@@ -334,12 +330,20 @@ def test_get_aggregate_scopes_to_cohort_and_ignores_other_cohorts():
     """
     run_date = date(2026, 7, 22)
     cohort_a_progress = _progress(
-        "learner_cohort_a", missed_deadlines=5, inactive_days=0, progress_percent=100,
-        feedback_score=5, cohort_id="cohort_a",
+        "learner_cohort_a",
+        missed_deadlines=5,
+        inactive_days=0,
+        progress_percent=100,
+        feedback_score=5,
+        cohort_id="cohort_a",
     )
     cohort_b_progress = _progress(
-        "learner_cohort_b", missed_deadlines=0, inactive_days=0, progress_percent=100,
-        feedback_score=5, cohort_id="cohort_b",
+        "learner_cohort_b",
+        missed_deadlines=0,
+        inactive_days=0,
+        progress_percent=100,
+        feedback_score=5,
+        cohort_id="cohort_b",
     )
     results = run_detector([cohort_a_progress, cohort_b_progress])
     for result in results:
@@ -355,9 +359,9 @@ def test_get_aggregate_scopes_to_cohort_and_ignores_other_cohorts():
 
 
 def test_get_at_risk_learner_ids_scopes_to_cohort():
-    """Only the requested cohort's at-risk learner_ids come back, even when
-    the globally-latest run_date belongs to a different cohort.
+    """Only the requested cohort's at-risk learner_ids come back.
 
+    Even when the globally-latest run_date belongs to a different cohort.
     This also pins the "latest run_date must itself be cohort-scoped" fix:
     cohort_b is persisted on a later run_date than cohort_a, so an unscoped
     "latest date" lookup would incorrectly return zero results for cohort_a.
@@ -366,12 +370,20 @@ def test_get_at_risk_learner_ids_scopes_to_cohort():
     later_date = date(2026, 7, 22)
 
     cohort_a_progress = _progress(
-        "learner_cohort_a_ids", missed_deadlines=5, inactive_days=0, progress_percent=100,
-        feedback_score=5, cohort_id="cohort_a",
+        "learner_cohort_a_ids",
+        missed_deadlines=5,
+        inactive_days=0,
+        progress_percent=100,
+        feedback_score=5,
+        cohort_id="cohort_a",
     )
     cohort_b_progress = _progress(
-        "learner_cohort_b_ids", missed_deadlines=5, inactive_days=0, progress_percent=100,
-        feedback_score=5, cohort_id="cohort_b",
+        "learner_cohort_b_ids",
+        missed_deadlines=5,
+        inactive_days=0,
+        progress_percent=100,
+        feedback_score=5,
+        cohort_id="cohort_b",
     )
     (result_a,) = run_detector([cohort_a_progress])
     (result_b,) = run_detector([cohort_b_progress])
