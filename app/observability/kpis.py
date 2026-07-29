@@ -5,25 +5,35 @@ and resolution time (estimate), and provides a function to refresh them
 from the read-only Session/EscalationTicket stores.
 """
 
-from prometheus_client import Counter, Gauge, Histogram
 from datetime import datetime
+from prometheus_client import REGISTRY, Counter, Gauge, Histogram
 
+# --- Safe Metric Retrieval / Initialization ---
 
-support_sessions_total = Counter(
-    "ops_support_sessions_total",
-    "Total number of support sessions observed",
-)
+if "ops_support_sessions_total" in REGISTRY._names_to_collectors:
+    support_sessions_total = REGISTRY._names_to_collectors["ops_support_sessions_total"]
+else:
+    support_sessions_total = Counter(
+        "ops_support_sessions_total",
+        "Total number of support sessions observed",
+    )
 
-escalation_rate = Gauge(
-    "ops_escalation_rate",
-    "Fraction of sessions that resulted in an escalation ticket, for the last computed window",
-)
+if "ops_escalation_rate" in REGISTRY._names_to_collectors:
+    escalation_rate = REGISTRY._names_to_collectors["ops_escalation_rate"]
+else:
+    escalation_rate = Gauge(
+        "ops_escalation_rate",
+        "Fraction of sessions that resulted in an escalation ticket, for the last computed window",
+    )
 
-resolution_time_seconds = Histogram(
-    "ops_resolution_time_seconds",
-    "Estimated resolution time per escalation ticket (approximation, see metrics.py docstring)",
-    buckets=[60, 300, 900, 1800, 3600, 7200, 21600, 86400],
-)
+if "ops_resolution_time_seconds" in REGISTRY._names_to_collectors:
+    resolution_time_seconds = REGISTRY._names_to_collectors["ops_resolution_time_seconds"]
+else:
+    resolution_time_seconds = Histogram(
+        "ops_resolution_time_seconds",
+        "Estimated resolution time per escalation ticket (approximation, see metrics.py docstring)",
+        buckets=[60, 300, 900, 1800, 3600, 7200, 21600, 86400],
+    )
 
 # NOTE: _last_known_total resets to 0 on process restart, which will
 # cause one artificially large Counter increment on the first update
@@ -52,23 +62,39 @@ def update_support_metrics(metrics: dict) -> None:
     escalation_rate.set(metrics["escalation_rate"])
 
     for ticket in metrics["resolution_time"]:
-        resolution_time_seconds.observe(ticket["estimated_resolution_seconds"])
+        val = ticket["estimated_resolution_seconds"]
+        # If the metric has explicit label names defined elsewhere, fallback safely
+        if getattr(resolution_time_seconds, "_labelnames", None):
+            resolution_time_seconds.labels(*[""] * len(resolution_time_seconds._labelnames)).observe(val)
+        else:
+            resolution_time_seconds.observe(val)
 
 
-reminders_sent_total = Counter(
-    "ops_reminders_sent_total",
-    "Total number of reminder notifications sent",
-)
+# --- Reminder Metrics ---
 
-reminders_late_total = Counter(
-    "ops_reminders_late_total",
-    "Total number of reminders sent at or after their event's due_at",
-)
+if "ops_reminders_sent_total" in REGISTRY._names_to_collectors:
+    reminders_sent_total = REGISTRY._names_to_collectors["ops_reminders_sent_total"]
+else:
+    reminders_sent_total = Counter(
+        "ops_reminders_sent_total",
+        "Total number of reminder notifications sent",
+    )
 
-reminder_on_time_rate = Gauge(
-    "ops_reminder_on_time_rate",
-    "Fraction of sent reminders delivered before their event's due_at, for the last computed batch",
-)
+if "ops_reminders_late_total" in REGISTRY._names_to_collectors:
+    reminders_late_total = REGISTRY._names_to_collectors["ops_reminders_late_total"]
+else:
+    reminders_late_total = Counter(
+        "ops_reminders_late_total",
+        "Total number of reminders sent at or after their event's due_at",
+    )
+
+if "ops_reminder_on_time_rate" in REGISTRY._names_to_collectors:
+    reminder_on_time_rate = REGISTRY._names_to_collectors["ops_reminder_on_time_rate"]
+else:
+    reminder_on_time_rate = Gauge(
+        "ops_reminder_on_time_rate",
+        "Fraction of sent reminders delivered before their event's due_at, for the last computed batch",
+    )
 
 
 def _as_naive_utc(dt: datetime) -> datetime:

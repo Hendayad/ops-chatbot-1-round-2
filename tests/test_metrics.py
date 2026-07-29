@@ -1,4 +1,5 @@
-﻿from app.dashboards.aggregate import aggregate_open_issues
+from app.dashboards.aggregate import aggregate_open_issues
+
 
 def test_aggregate_open_issues():
     m03 = [{"id": 1, "status": "open", "severity": "low"}]

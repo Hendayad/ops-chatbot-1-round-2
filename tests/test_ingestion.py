@@ -7,6 +7,7 @@ injected through the same protocols the production wiring uses, so the suite is
 fast and deterministic and runs anywhere ``make check`` runs.
 """
 
+import gc
 from pathlib import Path
 
 from app.ingestion.loader import load_materials
@@ -115,8 +116,8 @@ def test_reingest_identical_is_idempotent() -> None:
     second = store.ingest([material])
 
     assert first.sources_ingested == 1
-    assert second.sources_ingested == 0
     assert second.sources_skipped == 1
+    assert second.sources_ingested == 0
     # No duplication: chunk count is unchanged on the second run.
     assert len(repository.all_chunks()) == chunks_after_first
     # No wasted embedding work on an unchanged source.
@@ -186,12 +187,16 @@ def test_loader_reads_directory_tree(tmp_path: Path) -> None:
     (tmp_path / "faqs" / "general.md").write_text("# General\n\nWelcome to the program.", encoding="utf-8")
     (tmp_path / "onboarding" / "day1.md").write_text("# Day One\n\nSet up your laptop.", encoding="utf-8")
 
-    materials = load_materials(tmp_path, cohort="cohort-x")
+    try:
+        materials = load_materials(tmp_path, cohort="cohort-x")
 
-    assert len(materials) == 2
-    types = {material.metadata.type for material in materials}
-    assert types == {SourceType.FAQ, SourceType.ONBOARDING}
-    assert all(material.metadata.cohort == "cohort-x" for material in materials)
+        assert len(materials) == 2
+        types = {material.metadata.type for material in materials}
+        assert types == {SourceType.FAQ, SourceType.ONBOARDING}
+        assert all(material.metadata.cohort == "cohort-x" for material in materials)
+    finally:
+        del materials
+        gc.collect()
 
 
 def test_loader_renders_faq_json(tmp_path: Path) -> None:
@@ -202,11 +207,15 @@ def test_loader_renders_faq_json(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    materials = load_materials(tmp_path, cohort="cohort-x")
+    try:
+        materials = load_materials(tmp_path, cohort="cohort-x")
 
-    assert len(materials) == 1
-    assert "When do sessions start?" in materials[0].content
-    assert "At 10 AM." in materials[0].content
+        assert len(materials) == 1
+        assert "When do sessions start?" in materials[0].content
+        assert "At 10 AM." in materials[0].content
+    finally:
+        del materials
+        gc.collect()
 
 
 def test_ingestion_stats_default_to_zero() -> None:

@@ -1,55 +1,82 @@
-﻿from prometheus_client import Counter, Histogram, Gauge
+"""Prometheus KPIs and observability metrics for Ops Chatbot.
+
+This module defines and safely registers core Prometheus metrics to avoid
+duplicate registration errors during pytest suite execution.
+"""
+
+from prometheus_client import REGISTRY, Counter, Gauge, Histogram
+
+# --- Safe Registration Helper Utility ---
+
+
+def _get_or_create_metric(metric_cls, name: str, documentation: str, labelnames=(), **kwargs):
+    """Retrieve an existing metric from REGISTRY or create a new one safely."""
+    if name in REGISTRY._names_to_collectors:
+        return REGISTRY._names_to_collectors[name]
+    try:
+        return metric_cls(name, documentation, labelnames=labelnames, **kwargs)
+    except ValueError:
+        return REGISTRY._names_to_collectors[name]
+
 
 # --- Existing Metrics ---
 
-SUPPORT_VOLUME = Counter(
+SUPPORT_VOLUME = _get_or_create_metric(
+    Counter,
     "ops_support_volume_total",
     "Total support tickets received",
-    ["cohort", "severity"]
+    labelnames=["cohort", "severity"],
 )
 
-RESOLUTION_TIME = Histogram(
+RESOLUTION_TIME = _get_or_create_metric(
+    Histogram,
     "ops_resolution_time_seconds",
     "Time taken to resolve support tickets",
-    ["cohort"],
-    buckets=(60, 300, 600, 1800, 3600, 7200, 86400)
+    labelnames=["cohort"],
+    buckets=(60, 300, 600, 1800, 3600, 7200, 86400),
 )
 
-AT_RISK_ISSUES = Gauge(
+AT_RISK_ISSUES = _get_or_create_metric(
+    Gauge,
     "ops_at_risk_issues_count",
     "Count of currently active or at-risk tickets",
-    ["cohort", "risk_level"]
+    labelnames=["cohort", "risk_level"],
 )
 
 # --- Additional Bot & Escalation Metrics ---
 
-DEFLECTION_RATE = Counter(
+DEFLECTION_RATE = _get_or_create_metric(
+    Counter,
     "ops_bot_deflection_total",
     "Total queries resolved automatically without human intervention",
-    ["cohort"]
+    labelnames=["cohort"],
 )
 
-ESCALATIONS_TOTAL = Counter(
+ESCALATIONS_TOTAL = _get_or_create_metric(
+    Counter,
     "ops_escalations_total",
     "Total queries escalated to human operators",
-    ["cohort", "reason"]
+    labelnames=["cohort", "reason"],
 )
 
-CONNECTOR_SYNC_FAILURES = Counter(
+CONNECTOR_SYNC_FAILURES = _get_or_create_metric(
+    Counter,
     "ops_connector_sync_failures_total",
     "Total failed ticket synchronization attempts with external connectors",
-    ["connector_name"]
+    labelnames=["connector_name"],
 )
 
-FIRST_RESPONSE_TIME = Histogram(
+FIRST_RESPONSE_TIME = _get_or_create_metric(
+    Histogram,
     "ops_first_response_time_seconds",
     "Time taken to provide the initial response to a query",
-    ["cohort"],
-    buckets=(1, 2, 5, 10, 30, 60, 300)
+    labelnames=["cohort"],
+    buckets=(1, 2, 5, 10, 30, 60, 300),
 )
 
 
 # --- Helper Utility Functions ---
+
 
 def track_ticket_created(cohort: str, severity: str = "normal") -> None:
     """Increment support volume metric upon ticket creation."""
