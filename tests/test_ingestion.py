@@ -187,6 +187,10 @@ def test_loader_reads_directory_tree(tmp_path: Path) -> None:
     (tmp_path / "faqs" / "general.md").write_text("# General\n\nWelcome to the program.", encoding="utf-8")
     (tmp_path / "onboarding" / "day1.md").write_text("# Day One\n\nSet up your laptop.", encoding="utf-8")
 
+<<<<<<< Updated upstream
+=======
+    materials: list[RawMaterial] = []
+>>>>>>> Stashed changes
     try:
         materials = load_materials(tmp_path, cohort="cohort-x")
 
@@ -195,7 +199,12 @@ def test_loader_reads_directory_tree(tmp_path: Path) -> None:
         assert types == {SourceType.FAQ, SourceType.ONBOARDING}
         assert all(material.metadata.cohort == "cohort-x" for material in materials)
     finally:
+<<<<<<< Updated upstream
         del materials
+=======
+        if materials:
+            del materials
+>>>>>>> Stashed changes
         gc.collect()
 
 
@@ -207,6 +216,10 @@ def test_loader_renders_faq_json(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
+<<<<<<< Updated upstream
+=======
+    materials: list[RawMaterial] = []
+>>>>>>> Stashed changes
     try:
         materials = load_materials(tmp_path, cohort="cohort-x")
 
@@ -214,7 +227,12 @@ def test_loader_renders_faq_json(tmp_path: Path) -> None:
         assert "When do sessions start?" in materials[0].content
         assert "At 10 AM." in materials[0].content
     finally:
+<<<<<<< Updated upstream
         del materials
+=======
+        if materials:
+            del materials
+>>>>>>> Stashed changes
         gc.collect()
 
 
