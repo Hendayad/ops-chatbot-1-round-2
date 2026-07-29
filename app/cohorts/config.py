@@ -1,6 +1,7 @@
-﻿import json
+import json
 import os
 from typing import Dict, Any
+
 
 class CohortConfigLoader:
     """Loader for cohort-specific configurations."""
