@@ -1,6 +1,8 @@
 from sqlalchemy import func
 from sqlmodel import select
 from datetime import datetime
+from typing import cast
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.models.session import Session as ChatSession
 from app.models.escalation_ticket import EscalationTicket
@@ -60,11 +62,17 @@ def get_resolution_time_estimate(session, start: datetime, end: datetime) -> lis
     """
     statement = (
         select(
-            EscalationTicket.id.label("ticket_id"),
-            EscalationTicket.created_at.label("ticket_created_at"),
-            ChatSession.created_at.label("session_created_at"),
+            cast(ColumnElement, EscalationTicket.id).label("ticket_id"),
+            cast(ColumnElement, EscalationTicket.created_at).label("ticket_created_at"),
+            cast(ColumnElement, ChatSession.created_at).label("session_created_at"),
         )
-        .join(ChatSession, EscalationTicket.session_id == ChatSession.id)
+        .join(
+            ChatSession,
+            cast(
+                ColumnElement,
+                EscalationTicket.session_id == ChatSession.id,
+            ),
+        )
         .where(EscalationTicket.created_at >= start)
         .where(EscalationTicket.created_at <= end)
     )

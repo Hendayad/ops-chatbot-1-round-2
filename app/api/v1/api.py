@@ -4,6 +4,7 @@ This module sets up the main API router and includes all sub-routers for differe
 endpoints like authentication and chatbot functionality.
 """
 
+from app.prefs.api import router as notification_preferences_router
 from fastapi import APIRouter
 from app.kb.admin_api import router as kb_admin_router
 from app.api.dashboards import router as dashboards_router
@@ -18,8 +19,13 @@ api_router = APIRouter()
 api_router.include_router(kb_admin_router, prefix="/kb", tags=["KB Admin"])
 api_router.include_router(auth_router, prefix="/auth", tags=["Auth"])
 api_router.include_router(chatbot_router, prefix="/chatbot", tags=["Chatbot"])
-api_router.include_router(tickets_router, prefix="/tickets", tags=["Ops Tickets"],)
+api_router.include_router(
+    tickets_router,
+    prefix="/tickets",
+    tags=["Ops Tickets"],
+)
 api_router.include_router(dashboards_router, prefix="/dashboards", tags=["Dashboards"])
+api_router.include_router(notification_preferences_router, prefix="/notifications", tags=["Notification Preferences"])
 
 
 @api_router.get("/health")
