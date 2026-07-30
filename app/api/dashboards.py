@@ -1,9 +1,10 @@
+"""Ops Console dashboard API — read-only support metrics for program leads."""
 
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from app.observability.kpis import update_at_risk_metrics, update_open_issues_metrics, update_support_metrics
+from app.observability.kpis import update_alert_metrics, update_open_issues_metrics, update_support_metrics
 from app.api.v1.auth import get_current_user
 from app.core.config import settings
 from app.core.limiter import limiter
@@ -49,7 +50,6 @@ async def get_dashboard_metrics(
         with db_service.get_session_maker() as session:
             metrics = get_support_metrics(session, resolved_start, resolved_end)
         update_support_metrics(metrics)
-        update_at_risk_metrics(metrics["at_risk"]["by_risk_level"])
 
         # NOTE: only the first page of tickets is considered for the open-issues
         # count. Good enough for a dashboard summary; a full backlog view would
@@ -66,6 +66,7 @@ async def get_dashboard_metrics(
             resolution_time=metrics["resolution_time"],
             total_open=open_issues["total_open"],
         )
+        update_alert_metrics(alerts)
 
         return {**metrics, "open_issues": open_issues, "alerts": alerts}
     except Exception as e:
