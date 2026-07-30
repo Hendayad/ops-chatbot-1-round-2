@@ -33,12 +33,14 @@ escalate_to_human = escalate_to_human_module.escalate_to_human
 
 def build_valid_ticket() -> Ticket:
     """Build a valid ticket for schema and service tests."""
-    return Ticket(
-        problem="Learner cannot find the assignment deadline.",
-        what_was_tried="The assistant checked approved materials but did not find a grounded answer.",
-        context="The learner asked about the current sprint assignment deadline.",
-        suggested_next_step="Operations should confirm the deadline and update the approved materials if needed.",
-        status=TicketStatus.OPEN,
+    return Ticket.model_validate(
+        {
+            "problem": "Learner cannot find the assignment deadline.",
+            "what_was_tried": "The assistant checked approved materials but did not find a grounded answer.",
+            "context": "The learner asked about the current sprint assignment deadline.",
+            "suggested_next_step": "Operations should confirm the deadline and update the approved materials if needed.",
+            "status": TicketStatus.OPEN,
+        }
     )
 
 
@@ -104,11 +106,13 @@ def test_ticket_rejects_unknown_fields():
 
 def test_ticket_rejects_too_long_problem():
     with pytest.raises(ValidationError):
-        Ticket(
-            problem="x" * 801,
-            what_was_tried="Assistant searched approved materials.",
-            context="Question is about session timing.",
-            suggested_next_step="Ops should confirm the schedule.",
+        Ticket.model_validate(
+            {
+                "problem": "x" * 801,
+                "what_was_tried": "Assistant searched approved materials.",
+                "context": "Question is about session timing.",
+                "suggested_next_step": "Ops should confirm the schedule.",
+            }
         )
 
 
@@ -184,7 +188,7 @@ def test_database_escalation_trigger_returns_persisted_ticket_id(monkeypatch: py
     import types
 
     fake_module = types.ModuleType("app.services.database")
-    fake_module.database_service = FakeDatabaseService()
+    fake_module.__dict__["database_service"] = FakeDatabaseService()
     monkeypatch.setitem(sys.modules, "app.services.database", fake_module)
 
     result = asyncio.run(DatabaseEscalationTrigger().trigger(request))
@@ -543,7 +547,7 @@ def test_ops_ticket_limits_privacy_scoped_summary_lists():
 
 
 def test_ticket_status_update_validates_status_and_rejects_extra_fields():
-    update = ticket_schema.TicketStatusUpdate(status="resolved")
+    update = ticket_schema.TicketStatusUpdate(status=TicketStatus.RESOLVED)
 
     assert update.status is TicketStatus.RESOLVED
 
