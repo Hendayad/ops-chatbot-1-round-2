@@ -8,9 +8,16 @@ configured for one of them.
 Expected file shape::
 
     {
-      "cohort-a": {"name": "July 2026 Cohort", "materials": ["docs/faq.md"]},
-      "cohort-b": {"name": "Sept 2026 Cohort", "materials": []}
+      "cohort-a": {"name": "July 2026 Cohort", "materials_root": "materials/cohort-a"},
+      "cohort-b": {"name": "Sept 2026 Cohort", "materials_root": "materials/cohort-b"}
     }
+
+``materials_root`` is the directory app.ingestion.loader.load_materials walks,
+so launching a cohort is: add the entry, drop the files in that directory, call
+POST /api/v1/kb/cohorts/{cohort_id}/onboard. No code change, no redeploy.
+
+The path is read from the COHORTS_CONFIG_PATH environment variable so a
+deployment can point at its own file without editing this module.
 """
 
 import json
@@ -20,7 +27,7 @@ from typing import Any
 from app.cohorts.scope import normalize_cohort
 from app.core.logging import logger
 
-DEFAULT_CONFIG_PATH = "cohorts_config.json"
+DEFAULT_CONFIG_PATH = os.getenv("COHORTS_CONFIG_PATH", "cohorts_config.json")
 
 
 class CohortConfigLoader:
@@ -66,10 +73,10 @@ class CohortConfigLoader:
         """Return one cohort's configuration.
 
         An unknown cohort yields an empty template rather than None, so callers
-        can read ``materials`` without a null check.
+        can read ``materials_root`` without a null check.
         """
         normalized = normalize_cohort(cohort_id)
-        empty = {"cohort_id": normalized, "name": "", "materials": []}
+        empty = {"cohort_id": normalized, "name": "", "materials_root": ""}
         if not normalized:
             return empty
 
@@ -80,5 +87,35 @@ class CohortConfigLoader:
         return {
             "cohort_id": normalized,
             "name": entry.get("name", ""),
-            "materials": entry.get("materials", []),
+            "materials_root": entry.get("materials_root", ""),
         }
+
+
+# Shared loader used by the runtime. A single instance keeps every caller on the
+# same configuration file; it re-reads the file on each call, so editing the
+# config takes effect without restarting the application.
+cohort_config = CohortConfigLoader()
+
+
+def cohort_gating_enabled() -> bool:
+    """Return True when the deployment has declared its cohorts.
+
+    An empty or missing configuration means single-cohort mode, where the
+    deployment-level DEFAULT_COHORT is the only cohort and gating would refuse
+    every request. Once any cohort is configured, unknown ones are refused.
+    """
+    return bool(cohort_config.list_cohorts())
+
+
+def is_servable_cohort(cohort_id: str | None) -> bool:
+    """Return True when this cohort may be served knowledge.
+
+    This is the configuration half of isolation: app.cohorts.scope decides
+    whether an item belongs to a cohort, this decides whether the cohort
+    exists at all.
+    """
+    if not normalize_cohort(cohort_id):
+        return False
+    if not cohort_gating_enabled():
+        return True
+    return cohort_config.is_known_cohort(cohort_id)

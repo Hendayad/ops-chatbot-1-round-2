@@ -363,4 +363,3 @@ async def retrieve(
 ) -> list[RetrievedChunk]:
     """Convenience API used by the grounded-answer LangGraph node."""
     return await get_retriever().retrieve(query, cohort=cohort, top_k=top_k)
-
