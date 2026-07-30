@@ -8,6 +8,7 @@ from app.prefs.api import router as notification_preferences_router
 from fastapi import APIRouter
 
 from app.api.dashboards import router as dashboards_router
+from app.api.v1.reminders import router as reminders_router
 from app.api.v1.atrisk import router as atrisk_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.chatbot import router as chatbot_router
@@ -33,6 +34,11 @@ api_router.include_router(
     users.router,
     prefix="/users",
     tags=["Users"]
+)
+api_router.include_router(
+    reminders_router,
+    prefix="/reminders",
+    tags=["Reminders"],
 )
 
 

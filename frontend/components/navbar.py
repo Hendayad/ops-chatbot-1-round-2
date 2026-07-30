@@ -22,7 +22,7 @@ def render_top_navbar():
     """Renders the top navigation bar and returns the selected page name."""
 
     role = (st.session_state.get("role") or "").lower()
-    pages = ROLE_PAGES.get(role, [])
+    pages = ROLE_PAGES.get(role, ROLE_PAGES.get("learner", []))
 
     if not pages:
         st.warning("Unknown role — contact an administrator.")
@@ -77,8 +77,9 @@ def render_top_navbar():
         # ---- User menu ----
         with col_user:
             if hasattr(st, "popover"):
+                # Fixed popover label formatting
                 with st.popover(
-                    f"{_initial(display_name)}  {display_name}  ⌄",
+                    f"{display_name}",
                     use_container_width=True,
                 ):
                     st.markdown(f"**{display_name}**")
