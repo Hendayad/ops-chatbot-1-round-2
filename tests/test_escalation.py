@@ -1,3 +1,5 @@
+"""Tests for escalation ticket schemas and scaffold trigger."""
+
 import asyncio
 import importlib
 from datetime import datetime, timezone
