@@ -34,6 +34,7 @@ from sqlalchemy import (
 from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import Session
 
+from app.cohorts.scope import normalize_cohort, scope_by_cohort
 from app.core.config import settings
 from app.core.logging import logger
 
@@ -273,7 +274,7 @@ class KnowledgeRetriever:
             ValueError: If 'top_k' is outside the supported range.
         """
         normalized_query = " ".join(query.split())
-        normalized_cohort = cohort.strip()
+        normalized_cohort = normalize_cohort(cohort)
         if not normalized_query or not normalized_cohort:
             return []
         if not 1 <= top_k <= _MAX_TOP_K:
@@ -310,7 +311,8 @@ class KnowledgeRetriever:
 
         # The query already filters by cohort, but this defense-in-depth check
         # prevents a faulty custom repository from leaking another cohort.
-        scoped = [chunk for chunk in accepted if chunk.cohort == normalized_cohort]
+        # The rule itself lives in app.cohorts.scope so every layer shares it.
+        scoped = scope_by_cohort(accepted, normalized_cohort)
         results = scoped[:top_k]
 
         logger.info(
@@ -361,3 +363,4 @@ async def retrieve(
 ) -> list[RetrievedChunk]:
     """Convenience API used by the grounded-answer LangGraph node."""
     return await get_retriever().retrieve(query, cohort=cohort, top_k=top_k)
+
