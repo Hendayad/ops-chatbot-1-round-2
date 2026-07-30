@@ -38,7 +38,6 @@ else:
 # NOTE: _last_known_total resets to 0 on process restart, which will
 # cause one artificially large Counter increment on the first update
 # after a restart (catching up to the real total). This is a known
-# limitation — a durable fix would persist this value outside process
 # memory (e.g. in the database). Deferred for this slice; see PR description.
 _last_known_total = 0
 
@@ -68,6 +67,42 @@ def update_support_metrics(metrics: dict) -> None:
             resolution_time_seconds.labels(*[""] * len(resolution_time_seconds._labelnames)).observe(val)
         else:
             resolution_time_seconds.observe(val)
+
+
+# --- Open Issues & At-Risk Metrics (M09) ---
+
+if "ops_open_issues_total" in REGISTRY._names_to_collectors:
+    open_issues_total = REGISTRY._names_to_collectors["ops_open_issues_total"]
+else:
+    open_issues_total = Gauge(
+        "ops_open_issues_total",
+        "Count of currently open support issues (internal tickets + connector)",
+    )
+
+if "ops_dashboard_at_risk_count" in REGISTRY._names_to_collectors:
+    at_risk_issues_count = REGISTRY._names_to_collectors["ops_dashboard_at_risk_count"]
+else:
+    at_risk_issues_count = Gauge(
+        "ops_dashboard_at_risk_count",
+        "Count of learners currently flagged at-risk, by risk level (M09 dashboard view)",
+        ["risk_level"],
+    )
+
+
+def update_open_issues_metrics(open_issues: dict) -> None:
+    """Refresh the open-issues gauge from an already-computed open-issues dict."""
+    open_issues_total.set(open_issues["total_open"])
+
+
+def update_at_risk_metrics(at_risk_counts: dict[str, int]) -> None:
+    """Refresh the at-risk gauge, one value per risk level.
+
+    NOTE: M05 (at-risk detector) does not persist at-risk state yet, so
+    ``at_risk_counts`` is empty until that job exists. This function is
+    ready to receive real data the moment it does.
+    """
+    for risk_level, count in at_risk_counts.items():
+        at_risk_issues_count.labels(risk_level=risk_level).set(count)
 
 
 # --- Reminder Metrics ---
