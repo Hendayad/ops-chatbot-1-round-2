@@ -79,13 +79,21 @@ else:
         "Count of currently open support issues (internal tickets + connector)",
     )
 
-if "ops_dashboard_at_risk_count" in REGISTRY._names_to_collectors:
-    at_risk_issues_count = REGISTRY._names_to_collectors["ops_dashboard_at_risk_count"]
+# At-risk counts are published by the escalation lane at ticket-creation time
+# through ops_at_risk_issues_count in app/metrics/kpis.py, which already carries
+# a cohort label and is the series the Grafana dashboard reads. The dashboard
+# endpoint deliberately does not publish a second at-risk gauge: two series for
+# one quantity would drift apart and double-count once M05 lands.
+
+ALERT_TYPES = ("high_escalation_rate", "slow_resolution", "open_issues_backlog")
+
+if "ops_active_alerts" in REGISTRY._names_to_collectors:
+    active_alerts = REGISTRY._names_to_collectors["ops_active_alerts"]
 else:
-    at_risk_issues_count = Gauge(
-        "ops_dashboard_at_risk_count",
-        "Count of learners currently flagged at-risk, by risk level (M09 dashboard view)",
-        ["risk_level"],
+    active_alerts = Gauge(
+        "ops_active_alerts",
+        "Whether each dashboard alert is currently firing (1) or clear (0)",
+        ["alert_type"],
     )
 
 
@@ -94,15 +102,16 @@ def update_open_issues_metrics(open_issues: dict) -> None:
     open_issues_total.set(open_issues["total_open"])
 
 
-def update_at_risk_metrics(at_risk_counts: dict[str, int]) -> None:
-    """Refresh the at-risk gauge, one value per risk level.
+def update_alert_metrics(alerts: list[dict]) -> None:
+    """Publish one 1/0 series per alert type so Grafana can alert on them.
 
-    NOTE: M05 (at-risk detector) does not persist at-risk state yet, so
-    ``at_risk_counts`` is empty until that job exists. This function is
-    ready to receive real data the moment it does.
+    Every known type is written on every call, including the clear ones.
+    Without that, a gauge would keep its last firing value forever once an
+    alert stopped, and the dashboard would show a problem that had resolved.
     """
-    for risk_level, count in at_risk_counts.items():
-        at_risk_issues_count.labels(risk_level=risk_level).set(count)
+    firing = {alert["type"] for alert in alerts}
+    for alert_type in ALERT_TYPES:
+        active_alerts.labels(alert_type=alert_type).set(1 if alert_type in firing else 0)
 
 
 # --- Reminder Metrics ---

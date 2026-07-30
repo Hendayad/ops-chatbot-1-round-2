@@ -1,4 +1,10 @@
 from app.dashboards.aggregate import aggregate_open_issues, build_alerts
+from app.observability.kpis import ALERT_TYPES, active_alerts, update_alert_metrics
+
+
+def _alert_value(alert_type):
+    """Read the current 1/0 value of one alert series."""
+    return active_alerts.labels(alert_type=alert_type)._value.get()
 
 
 def test_aggregate_open_issues_counts_open_and_in_progress():
@@ -35,3 +41,24 @@ def test_build_alerts_flags_open_issues_backlog():
 def test_build_alerts_empty_when_all_healthy():
     alerts = build_alerts(escalation_rate=0.1, resolution_time=[], total_open=1)
     assert alerts == []
+
+
+def test_update_alert_metrics_marks_firing_alert():
+    update_alert_metrics([{"type": "high_escalation_rate", "message": "x"}])
+
+    assert _alert_value("high_escalation_rate") == 1
+
+
+def test_update_alert_metrics_clears_alerts_that_stopped_firing():
+    """A gauge keeps its last value, so cleared alerts must be written as 0."""
+    update_alert_metrics([{"type": "high_escalation_rate", "message": "x"}])
+    update_alert_metrics([])
+
+    assert _alert_value("high_escalation_rate") == 0
+
+
+def test_update_alert_metrics_writes_every_known_type():
+    update_alert_metrics([])
+
+    for alert_type in ALERT_TYPES:
+        assert _alert_value(alert_type) == 0
