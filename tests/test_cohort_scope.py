@@ -178,8 +178,8 @@ def config_file(temp_dir):
     with open(path, "w", encoding="utf-8") as config:
         json.dump(
             {
-                "cohort-a": {"name": "July 2026", "materials": ["docs/faq.md"]},
-                "cohort-b": {"name": "Sept 2026", "materials": []},
+                "cohort-a": {"name": "July 2026", "materials_root": "materials/cohort-a"},
+                "cohort-b": {"name": "Sept 2026", "materials_root": ""},
             },
             config,
         )
@@ -198,14 +198,14 @@ def test_load_cohort_config_returns_entry(config_file):
 
     assert config["cohort_id"] == "cohort-a"
     assert config["name"] == "July 2026"
-    assert config["materials"] == ["docs/faq.md"]
+    assert config["materials_root"] == "materials/cohort-a"
 
 
 def test_load_cohort_config_returns_empty_template_for_unknown_cohort(config_file):
     loader = CohortConfigLoader(config_file)
     config = loader.load_cohort_config("cohort-zzz")
 
-    assert config == {"cohort_id": "cohort-zzz", "name": "", "materials": []}
+    assert config == {"cohort_id": "cohort-zzz", "name": "", "materials_root": ""}
 
 
 def test_is_known_cohort(config_file):
@@ -232,3 +232,89 @@ def test_malformed_config_file_is_treated_as_no_cohorts(temp_dir):
     loader = CohortConfigLoader(path)
 
     assert loader.list_cohorts() == []
+
+
+# --- The isolation evaluation must run in CI, not only by hand ---
+
+
+def test_isolation_eval_covers_the_real_retrieval_and_answer_paths():
+    """The eval is a deliverable, so a regression in it must fail the suite."""
+    from evals.cohort_isolation import run_evaluation
+
+    reports = run_evaluation()
+    failed = [report["case"] for report in reports if not report["passed"]]
+
+    assert not failed, f"cross-cohort leakage detected in: {failed}"
+    # Guard against the eval silently shrinking back to pure-function cases.
+    covered = {report["case"] for report in reports}
+    assert any(case.startswith("retriever_") for case in covered)
+    assert any(case.startswith("answer_node_") for case in covered)
+
+
+# --- Config-driven gating: which cohorts may be served at all ---
+
+
+def test_any_cohort_is_servable_when_nothing_is_configured(monkeypatch):
+    """An empty config means single-cohort mode, not "refuse everything"."""
+    from app.cohorts import config as config_module
+
+    monkeypatch.setattr(config_module.cohort_config, "config_path", "does_not_exist.json")
+
+    assert config_module.cohort_gating_enabled() is False
+    assert config_module.is_servable_cohort("cohort-a") is True
+
+
+def test_unknown_cohort_is_refused_once_cohorts_are_configured(monkeypatch, config_file):
+    from app.cohorts import config as config_module
+
+    monkeypatch.setattr(config_module.cohort_config, "config_path", config_file)
+
+    assert config_module.cohort_gating_enabled() is True
+    assert config_module.is_servable_cohort("cohort-a") is True
+    assert config_module.is_servable_cohort("cohort-zzz") is False
+
+
+def test_empty_cohort_is_never_servable(monkeypatch, config_file):
+    from app.cohorts import config as config_module
+
+    monkeypatch.setattr(config_module.cohort_config, "config_path", config_file)
+
+    assert config_module.is_servable_cohort(None) is False
+    assert config_module.is_servable_cohort("") is False
+
+
+def test_answer_node_refuses_a_cohort_that_is_not_configured(monkeypatch, config_file):
+    """The config gate must run before retrieval, not after."""
+    import asyncio
+
+    from app.cohorts import config as config_module
+    from app.graph.nodes.answer import generate_grounded_answer
+
+    monkeypatch.setattr(config_module.cohort_config, "config_path", config_file)
+
+    outcome = asyncio.run(generate_grounded_answer("when is the deadline", cohort="cohort-zzz"))
+
+    assert outcome.grounded is False
+    assert outcome.escalation_reason == "unknown_cohort"
+
+
+def test_a_new_cohort_needs_only_a_config_entry(temp_dir):
+    """F3.4 target: launching a cohort is config + materials, with no code change."""
+    path = os.path.join(temp_dir, "cohorts.json")
+    with open(path, "w", encoding="utf-8") as config:
+        json.dump({"cohort-a": {"name": "A", "materials_root": "materials/a"}}, config)
+    loader = CohortConfigLoader(path)
+    assert loader.list_cohorts() == ["cohort-a"]
+
+    with open(path, "w", encoding="utf-8") as config:
+        json.dump(
+            {
+                "cohort-a": {"name": "A", "materials_root": "materials/a"},
+                "cohort-c": {"name": "C", "materials_root": "materials/c"},
+            },
+            config,
+        )
+
+    # Same loader instance, no restart: the file is re-read on every call.
+    assert loader.list_cohorts() == ["cohort-a", "cohort-c"]
+    assert loader.load_cohort_config("cohort-c")["materials_root"] == "materials/c"

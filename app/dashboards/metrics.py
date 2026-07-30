@@ -6,6 +6,8 @@ from sqlalchemy.sql.elements import ColumnElement
 
 from app.models.session import Session as ChatSession
 from app.models.escalation_ticket import EscalationTicket
+from app.risk.signals import AtRiskSignal, compute_signals
+from app.schemas.progress import LearnerProgress
 
 
 def get_support_volume(session, start: datetime, end: datetime) -> list[dict]:
@@ -91,23 +93,61 @@ def get_resolution_time_estimate(session, start: datetime, end: datetime) -> lis
     return estimates
 
 
-def get_at_risk_snapshot() -> dict:
-    """Return the current at-risk learner counts, by risk level.
+def risk_level_for(signal: AtRiskSignal) -> str:
+    """Grade one M05 signal by how many indicators it triggered.
 
-    NOTE: M05 (the at-risk detector) does not persist at-risk state anywhere
-    queryable yet — it is only a scoring function today, with no scheduled
-    job and no database table. Until that exists, this returns an empty
-    snapshot instead of fabricating numbers. Once M05 ships its detector
-    job, only this function's body needs to change to a real query.
+    M05 returns a boolean plus the list of indicators, not a severity, so the
+    dashboard derives one: more independent warning signs means a learner needs
+    attention sooner. The thresholds live here because they are a reporting
+    choice, not part of the detector's contract.
     """
-    return {"at_risk_count": 0, "by_risk_level": {}}
+    triggered = len(signal.triggered_indicators)
+    if triggered >= 3:
+        return "high"
+    if triggered == 2:
+        return "medium"
+    return "low"
 
 
-def get_support_metrics(session, start: datetime, end: datetime) -> dict:
+def get_at_risk_snapshot(progress_list: list[LearnerProgress] | None = None) -> dict:
+    """Return at-risk learner counts by risk level, computed through M05.
+
+    Scoring is delegated to app.risk.signals.compute_signals so the dashboard
+    and the detector can never disagree about who is at risk.
+
+    NOTE: nothing persists LearnerProgress yet, so the dashboard endpoint
+    currently calls this with no progress and gets an empty snapshot. Once a
+    progress store exists, the caller passes it in and this function is
+    unchanged.
+    """
+    signals = compute_signals(progress_list or [])
+    at_risk = [signal for signal in signals if signal.is_at_risk]
+
+    by_risk_level: dict[str, int] = {}
+    by_cohort: dict[str, dict[str, int]] = {}
+    for signal in at_risk:
+        level = risk_level_for(signal)
+        by_risk_level[level] = by_risk_level.get(level, 0) + 1
+        cohort_levels = by_cohort.setdefault(signal.cohort_id, {})
+        cohort_levels[level] = cohort_levels.get(level, 0) + 1
+
+    return {
+        "at_risk_count": len(at_risk),
+        "by_risk_level": by_risk_level,
+        "by_cohort": by_cohort,
+    }
+
+
+def get_support_metrics(
+    session,
+    start: datetime,
+    end: datetime,
+    progress_list: list[LearnerProgress] | None = None,
+) -> dict:
     """Return all Ops dashboard metrics for the given window (M09 / F3.3)."""
     return {
         "support_volume": get_support_volume(session, start, end),
         "escalation_rate": get_escalation_rate(session, start, end),
         "resolution_time": get_resolution_time_estimate(session, start, end),
-        "at_risk": get_at_risk_snapshot(),
+        "at_risk": get_at_risk_snapshot(progress_list),
     }

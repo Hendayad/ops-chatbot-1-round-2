@@ -22,10 +22,12 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_ex
 
 from app.core.logging import logger
 from app.metrics.kpis import (
-    AT_RISK_ISSUES,
-    ESCALATIONS_TOTAL,
-    RESOLUTION_TIME,
-    SUPPORT_VOLUME,
+    DEFAULT_COHORT_LABEL,
+    track_connector_failure,
+    track_escalation,
+    track_resolution_time,
+    track_ticket_created,
+    update_at_risk_count,
 )
 from app.models.escalation_ticket import EscalationTicket
 from app.schemas.escalation import (
@@ -156,12 +158,15 @@ class TicketService:
         notification_delivered = await self._notify_ops(stored)
 
         # --- M09 Instrumentation ---
-        cohort_id = getattr(request, "cohort_id", "default")
-        SUPPORT_VOLUME.labels(cohort=cohort_id, severity=stored.source).inc()
-        ESCALATIONS_TOTAL.labels(cohort=cohort_id, reason=request.reason).inc()
+        cohort_id = getattr(request, "cohort_id", DEFAULT_COHORT_LABEL)
+        track_ticket_created(cohort_id, severity=stored.source)
+        track_escalation(cohort_id, reason=request.reason)
 
         if getattr(request, "is_at_risk", False):
-            AT_RISK_ISSUES.labels(cohort=cohort_id, risk_level="high").inc()
+            # A ticket flagged at risk publishes its own gauge value. The
+            # dashboard's M05 snapshot overwrites this series when it has real
+            # learner data, which is why both write through the same helper.
+            update_at_risk_count(cohort_id, "high", 1)
         # ---------------------------
 
         message = (
@@ -250,8 +255,8 @@ class TicketService:
                     created_at = created_at.replace(tzinfo=timezone.utc)
 
                 duration_seconds = (now - created_at).total_seconds()
-                cohort_id = getattr(ticket, "cohort_id", "default")
-                RESOLUTION_TIME.labels(cohort=cohort_id).observe(duration_seconds)
+                cohort_id = getattr(ticket, "cohort_id", DEFAULT_COHORT_LABEL)
+                track_resolution_time(cohort_id, duration_seconds)
             # --------------------------------------------------
 
             return ticket
@@ -404,6 +409,11 @@ class TicketService:
             return True
         except Exception:
             ops_ticket_notifications_total.labels(outcome="error").inc()
+            # Pushing the ticket to the Operations channel is the external sync
+            # step of this lane, so a failed delivery is a connector failure.
+            # Labelled by adapter class so swapping in Slack or email keeps the
+            # dashboard readable without a code change here.
+            track_connector_failure(type(self._notifier).__name__)
             logger.exception("ops_ticket_notification_failed", ticket_id=ticket.id)
             return False
 

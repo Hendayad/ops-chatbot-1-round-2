@@ -1,26 +1,342 @@
-﻿{
+{
   "annotations": { "list": [] },
+  "description": "Ops support load, escalations, and at-risk trends (M09 / F3.3). Every query below reads a metric defined in app/metrics/kpis.py and written by a real runtime path.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
   "id": null,
-  "title": "Ops Support Load & Cohort Isolation Metrics",
+  "links": [],
   "panels": [
     {
       "title": "Support Volume",
+      "description": "Support tickets created per second, split by cohort and by the lane that raised them.",
       "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
-      "targets": [{ "expr": "sum(rate(ops_support_volume_total[5m])) by (cohort)", "legendFormat": "{{cohort}}" }]
+      "id": 1,
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 2 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "sum(rate(ops_support_volume_total[5m])) by (cohort, severity)",
+          "legendFormat": "{{cohort}} - {{severity}}",
+          "range": true,
+          "refId": "A"
+        }
+      ]
     },
     {
-      "title": "At-Risk Issues",
-      "type": "stat",
+      "title": "Escalations by Reason",
+      "description": "Queries handed to a human operator, grouped by the reason the agent gave up.",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
-      "targets": [{ "expr": "sum(ops_at_risk_issues_count) by (risk_level)", "legendFormat": "{{risk_level}}" }]
+      "id": 2,
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 2 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "sum(rate(ops_escalations_total[5m])) by (cohort, reason)",
+          "legendFormat": "{{cohort}} - {{reason}}",
+          "range": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Escalation Rate",
+      "description": "Fraction of support sessions that ended in an escalation ticket, for the window the dashboard endpoint last computed. Red matches the high_escalation_rate alert threshold.",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 8 },
+      "id": 3,
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.3 },
+              { "color": "red", "value": 0.5 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "ops_escalation_rate",
+          "legendFormat": "escalation rate",
+          "instant": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Open Issues",
+      "description": "Support issues currently open or in progress. Thresholds match the open_issues_backlog alert.",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 8 },
+      "id": 4,
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 10 },
+              { "color": "red", "value": 20 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "ops_open_issues_total",
+          "legendFormat": "open issues",
+          "range": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Active Alerts",
+      "description": "Each dashboard alert, firing (1) or clear (0). Every alert type is rewritten on each dashboard refresh, so a cleared alert returns to green instead of staying red.",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 8 },
+      "id": 5,
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": { "color": "green", "index": 0, "text": "Clear" },
+                "1": { "color": "red", "index": 1, "text": "Firing" }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "ops_active_alerts",
+          "legendFormat": "{{alert_type}}",
+          "instant": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Resolution Time (p95)",
+      "description": "95th percentile time from ticket creation to resolution, per cohort.",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "id": 6,
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "s",
+          "custom": { "fillOpacity": 10, "lineWidth": 2, "axisLabel": "Seconds" }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum(rate(ops_resolution_time_seconds_bucket[5m])) by (le, cohort))",
+          "legendFormat": "p95 {{cohort}}",
+          "range": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "First Response Time (p95)",
+      "description": "95th percentile time for the agent to produce its first response, grounded answer or honest refusal alike.",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "id": 7,
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "s",
+          "custom": { "fillOpacity": 10, "lineWidth": 2, "axisLabel": "Seconds" }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum(rate(ops_first_response_time_seconds_bucket[5m])) by (le, cohort))",
+          "legendFormat": "p95 {{cohort}}",
+          "range": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "At-Risk Learners Now",
+      "description": "Current at-risk counts from the M05 detector, graded by how many risk indicators each learner triggered.",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 24 },
+      "id": 8,
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 5 },
+              { "color": "red", "value": 10 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "sum(ops_at_risk_issues_count) by (cohort, risk_level)",
+          "legendFormat": "{{cohort}} - {{risk_level}}",
+          "instant": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "At-Risk Trend",
+      "description": "At-risk counts over time per cohort. This is the trend view the acceptance signal asks for; a rising line means the cohort is falling behind faster than Ops is catching up.",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 16, "x": 8, "y": 24 },
+      "id": 9,
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 2 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "sum(ops_at_risk_issues_count) by (cohort)",
+          "legendFormat": "{{cohort}}",
+          "range": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Bot Deflection Rate",
+      "description": "Share of queries the agent answered from approved materials without a human. Computed as deflections over deflections plus escalations, so it stays comparable as traffic changes.",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+      "id": 10,
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "custom": { "fillOpacity": 10, "lineWidth": 2 }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "sum(rate(ops_bot_deflection_total[5m])) by (cohort) / (sum(rate(ops_bot_deflection_total[5m])) by (cohort) + sum(rate(ops_escalations_total[5m])) by (cohort))",
+          "legendFormat": "{{cohort}}",
+          "range": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Connector Sync Failures",
+      "description": "Failed attempts to push a ticket to an external Operations channel, labelled by adapter. A non-zero line means tickets are stored but Ops was not told.",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
+      "id": 11,
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 10, "lineWidth": 2 },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "sum(rate(ops_connector_sync_failures_total[5m])) by (connector_name)",
+          "legendFormat": "{{connector_name}}",
+          "range": true,
+          "refId": "A"
+        }
+      ]
     }
   ],
+  "refresh": "30s",
   "schemaVersion": 38,
   "style": "dark",
+  "tags": ["ops", "support", "m09"],
   "time": { "from": "now-6h", "to": "now" },
-  "version": 1
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Ops Support Load & At-Risk Trends",
+  "uid": "ops-support-dashboard",
+  "version": 2
 }
