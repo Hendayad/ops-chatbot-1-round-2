@@ -3,3 +3,10 @@
 __pycache__/
 .venv/
 .pytest_cache/
+
+# Local-only demo/debug artifacts -- never commit generated tokens or logs
+atrisk_token.txt
+*.log
+*_log.txt
+logs/
+evals/reports/
