@@ -10,7 +10,7 @@ from pages.users import show_users
 from pages.chat import show_chat
 from pages.tickets import show_tickets
 from pages.knowledge_base import show_knowledge_base
-from pages.reminders import show_notifications
+from pages.reminders import show_reminders
 from pages.analytics import show_analytics
 from pages.settings import show_settings
 from pages.register import show_register
@@ -140,7 +140,7 @@ else:
         show_knowledge_base()
 
     elif page == "Reminders":
-        show_notifications()
+        show_reminders()
 
     elif page == "Analytics":
         show_analytics()

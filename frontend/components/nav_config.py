@@ -9,10 +9,19 @@ PAGE_ICONS = {
     "Users": "👥",
 }
 
+# Learner tabs vs. Admin-exclusive tabs
 ROLE_PAGES = {
-    "learner": ["Chat Viewer", "Knowledge Base", "Reminders", "Settings"],
+    "learner": [
+        "Chat Viewer",
+        "Reminders",
+        "Settings",
+    ],
     "admin": [
-        "Dashboard", "Chat Viewer", "Escalations", "Knowledge Base",
-        "Reminders", "Analytics", "Settings", "Users",
+        "Dashboard",
+        "Escalations",
+        "Analytics",
+        "Knowledge Base",
+        "Users",
+        "Settings",
     ],
 }
