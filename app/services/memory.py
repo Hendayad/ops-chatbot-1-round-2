@@ -67,31 +67,32 @@ class MemoryService:
             # Multi-Cohort Scoped Cache Key to prevent cross-cohort cache hits
             cache_scope = f"{cohort_id}:{user_id}" if cohort_id else str(user_id)
             key = cache_key("memory", cache_scope, query)
-            
+
             cached = await cache_service.get(key)
             if cached is not None:
                 logger.debug("memory_search_cache_hit", user_id=user_id, cohort_id=cohort_id)
                 return cached
 
             memory = await self._get_memory()
-            
+
             # Scoped metadata filter to enforce strict isolation in pgvector
             filters = {}
             if cohort_id:
                 filters["cohort_id"] = cohort_id
 
-            results = await memory.search(
-                user_id=str(user_id), 
-                query=query,
-                filters=filters if filters else None
-            )
+            results = await memory.search(user_id=str(user_id), query=query, filters=filters if filters else None)
 
             # Verification against cross-cohort leakage
             filtered_results = []
             for r in results.get("results", []):
                 rec_cohort = r.get("metadata", {}).get("cohort_id") if isinstance(r, dict) else None
                 if cohort_id and rec_cohort and rec_cohort != cohort_id:
-                    logger.warning("cross_cohort_leakage_blocked", user_id=user_id, requested_cohort=cohort_id, leaked_cohort=rec_cohort)
+                    logger.warning(
+                        "cross_cohort_leakage_blocked",
+                        user_id=user_id,
+                        requested_cohort=cohort_id,
+                        leaked_cohort=rec_cohort,
+                    )
                     continue
                 filtered_results.append(f"* {r['memory']}")
 
@@ -103,10 +104,14 @@ class MemoryService:
 
             return result
         except Exception as e:
-            logger.error("failed_to_get_relevant_memory", error=str(e), user_id=user_id, cohort_id=cohort_id, query=query)
+            logger.error(
+                "failed_to_get_relevant_memory", error=str(e), user_id=user_id, cohort_id=cohort_id, query=query
+            )
             return ""
 
-    async def add(self, user_id: str | None, messages: list[dict], metadata: dict | None = None, cohort_id: str | None = None) -> None:
+    async def add(
+        self, user_id: str | None, messages: list[dict], metadata: dict | None = None, cohort_id: str | None = None
+    ) -> None:
         """Add messages to long-term memory scoped with cohort_id metadata.
 
         No-op when ``user_id`` is ``None``.
@@ -115,7 +120,7 @@ class MemoryService:
             return
         try:
             memory = await self._get_memory()
-            
+
             # Enforce cohort_id inside metadata payload
             payload_metadata = metadata or {}
             if cohort_id:

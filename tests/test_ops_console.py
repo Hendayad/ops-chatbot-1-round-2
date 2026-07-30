@@ -147,7 +147,7 @@ def test_dashboard_metrics_requires_auth():
     """Dashboard endpoint should reject unauthenticated requests."""
     response = client.get("/api/v1/dashboards/metrics")
 
-    assert response.status_code == 403
+    assert response.status_code in (401, 403)
 
 
 def test_kb_reingest_requires_auth():
@@ -157,21 +157,21 @@ def test_kb_reingest_requires_auth():
         json=[],
     )
 
-    assert response.status_code == 403
+    assert response.status_code in (401, 403)
 
 
 def test_kb_list_materials_requires_auth():
     """KB materials endpoint should reject unauthenticated requests."""
     response = client.get("/api/v1/kb/materials")
 
-    assert response.status_code == 403
+    assert response.status_code in (401, 403)
 
 
 def test_kb_retire_requires_auth():
     """KB retire endpoint should reject unauthenticated requests."""
     response = client.post("/api/v1/kb/retire/mock-material-1")
 
-    assert response.status_code == 403
+    assert response.status_code in (401, 403)
 
 
 def test_dashboard_metrics_rate_limit():

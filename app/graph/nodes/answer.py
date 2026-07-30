@@ -25,6 +25,7 @@ from pydantic import (
     ValidationError,
 )
 
+from app.cohorts.scope import is_same_cohort, normalize_cohort, scope_by_cohort
 from app.core.logging import logger
 from app.prompts.grounding import (
     HONEST_REFUSAL_MESSAGE,
@@ -189,8 +190,10 @@ def _deduplicate_and_scope_chunks(
     unique: list[RetrievedChunk] = []
     seen_citations: set[str] = set()
 
-    for chunk in chunks:
-        if chunk.cohort.strip() != cohort or not chunk.content.strip():
+    # Cohort isolation is delegated to app.cohorts.scope so this node shares
+    # one rule with the retriever and the evaluation suite.
+    for chunk in scope_by_cohort(list(chunks), cohort):
+        if not chunk.content.strip():
             continue
         if chunk.citation_id in seen_citations:
             continue
@@ -215,7 +218,7 @@ def _citations_are_valid(
     if not cited_aliases.issubset(available_aliases):
         return False
 
-    return all(citation_map[alias].cohort.strip() == cohort for alias in cited_aliases)
+    return all(is_same_cohort(citation_map[alias].cohort, cohort) for alias in cited_aliases)
 
 
 def _source_attributions(
@@ -273,7 +276,7 @@ async def generate_grounded_answer(
         a caller merely because grounding infrastructure failed.
     """
     normalized_question = " ".join(question.split())
-    normalized_cohort = cohort.strip()
+    normalized_cohort = normalize_cohort(cohort)
     if not normalized_question:
         return _refusal("missing_question")
     if not normalized_cohort:
@@ -388,3 +391,4 @@ __all__ = [
     "grounded_answer",
     "resolve_cohort",
 ]
+

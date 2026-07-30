@@ -1,24 +1,8 @@
-# Python-generated files
-__pycache__/
-*.py[oc]
-build/
-dist/
-wheels/
-*.egg-info
-*.jsonl
-.pytest_cache
-.vscode
-# Virtual environments
-.venv
-
-# Environment variables
-.env
+﻿.env
 .env.development
-.env.staging
-.env.production
+__pycache__/
+.venv/
+.pytest_cache/
 
-# Misc
-*.ipynb
-
-# Reports
-evals/reports/
+logs/
+.pytest_tmp/

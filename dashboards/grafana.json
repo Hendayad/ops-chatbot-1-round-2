@@ -1,0 +1,26 @@
+﻿{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "title": "Ops Support Load & Cohort Isolation Metrics",
+  "panels": [
+    {
+      "title": "Support Volume",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [{ "expr": "sum(rate(ops_support_volume_total[5m])) by (cohort)", "legendFormat": "{{cohort}}" }]
+    },
+    {
+      "title": "At-Risk Issues",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [{ "expr": "sum(ops_at_risk_issues_count) by (risk_level)", "legendFormat": "{{risk_level}}" }]
+    }
+  ],
+  "schemaVersion": 38,
+  "style": "dark",
+  "time": { "from": "now-6h", "to": "now" },
+  "version": 1
+}

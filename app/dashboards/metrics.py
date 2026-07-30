@@ -1,6 +1,8 @@
 from sqlalchemy import func
 from sqlmodel import select
 from datetime import datetime
+from typing import cast
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.models.session import Session as ChatSession
 from app.models.escalation_ticket import EscalationTicket
@@ -53,18 +55,23 @@ def get_resolution_time_estimate(session, start: datetime, end: datetime) -> lis
     LangGraph's internal checkpoint tables (out of platform-boundary scope
     for this task). As an approved fallback , this
     estimates resolution time as: ticket.created_at - session.created_at
-    — i.e. how long the session had been running before escalation, NOT
     true time-to-resolution. Tickets with no linked session are excluded.
     This is a known limitation, to be revisited once real ticket-resolution
     tracking exists.
     """
     statement = (
         select(
-            EscalationTicket.id.label("ticket_id"),
-            EscalationTicket.created_at.label("ticket_created_at"),
-            ChatSession.created_at.label("session_created_at"),
+            cast(ColumnElement, EscalationTicket.id).label("ticket_id"),
+            cast(ColumnElement, EscalationTicket.created_at).label("ticket_created_at"),
+            cast(ColumnElement, ChatSession.created_at).label("session_created_at"),
         )
-        .join(ChatSession, EscalationTicket.session_id == ChatSession.id)
+        .join(
+            ChatSession,
+            cast(
+                ColumnElement,
+                EscalationTicket.session_id == ChatSession.id,
+            ),
+        )
         .where(EscalationTicket.created_at >= start)
         .where(EscalationTicket.created_at <= end)
     )
@@ -84,10 +91,23 @@ def get_resolution_time_estimate(session, start: datetime, end: datetime) -> lis
     return estimates
 
 
+def get_at_risk_snapshot() -> dict:
+    """Return the current at-risk learner counts, by risk level.
+
+    NOTE: M05 (the at-risk detector) does not persist at-risk state anywhere
+    queryable yet — it is only a scoring function today, with no scheduled
+    job and no database table. Until that exists, this returns an empty
+    snapshot instead of fabricating numbers. Once M05 ships its detector
+    job, only this function's body needs to change to a real query.
+    """
+    return {"at_risk_count": 0, "by_risk_level": {}}
+
+
 def get_support_metrics(session, start: datetime, end: datetime) -> dict:
-    """Return all Phase-1 support metrics for the given window."""
+    """Return all Ops dashboard metrics for the given window (M09 / F3.3)."""
     return {
         "support_volume": get_support_volume(session, start, end),
         "escalation_rate": get_escalation_rate(session, start, end),
         "resolution_time": get_resolution_time_estimate(session, start, end),
+        "at_risk": get_at_risk_snapshot(),
     }

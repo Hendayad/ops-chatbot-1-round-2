@@ -7,7 +7,12 @@ injected through the same protocols the production wiring uses, so the suite is
 fast and deterministic and runs anywhere ``make check`` runs.
 """
 
+import gc
+import shutil
+import tempfile
 from pathlib import Path
+
+import pytest
 
 from app.ingestion.loader import load_materials
 from app.kb.store import (
@@ -115,8 +120,8 @@ def test_reingest_identical_is_idempotent() -> None:
     second = store.ingest([material])
 
     assert first.sources_ingested == 1
-    assert second.sources_ingested == 0
     assert second.sources_skipped == 1
+    assert second.sources_ingested == 0
     # No duplication: chunk count is unchanged on the second run.
     assert len(repository.all_chunks()) == chunks_after_first
     # No wasted embedding work on an unchanged source.
@@ -179,34 +184,60 @@ def test_empty_material_produces_no_chunks() -> None:
     assert embedder.calls == 0
 
 
-def test_loader_reads_directory_tree(tmp_path: Path) -> None:
+@pytest.fixture
+def temp_dir():
+    """Yield a private temporary directory and remove it afterwards.
+
+    Uses tempfile rather than pytest's tmp_path fixture because this Windows
+    environment denies access to pytest's own temporary root.
+    """
+    path = Path(tempfile.mkdtemp())
+    try:
+        yield path
+    finally:
+        shutil.rmtree(path, ignore_errors=True)
+
+
+def test_loader_reads_directory_tree(temp_dir: Path) -> None:
     """The loader tags materials by directory and stamps the cohort."""
-    (tmp_path / "faqs").mkdir()
-    (tmp_path / "onboarding").mkdir()
-    (tmp_path / "faqs" / "general.md").write_text("# General\n\nWelcome to the program.", encoding="utf-8")
-    (tmp_path / "onboarding" / "day1.md").write_text("# Day One\n\nSet up your laptop.", encoding="utf-8")
+    (temp_dir / "faqs").mkdir()
+    (temp_dir / "onboarding").mkdir()
+    (temp_dir / "faqs" / "general.md").write_text("# General\n\nWelcome to the program.", encoding="utf-8")
+    (temp_dir / "onboarding" / "day1.md").write_text("# Day One\n\nSet up your laptop.", encoding="utf-8")
 
-    materials = load_materials(tmp_path, cohort="cohort-x")
+    materials: list[RawMaterial] = []
+    try:
+        materials = load_materials(temp_dir, cohort="cohort-x")
 
-    assert len(materials) == 2
-    types = {material.metadata.type for material in materials}
-    assert types == {SourceType.FAQ, SourceType.ONBOARDING}
-    assert all(material.metadata.cohort == "cohort-x" for material in materials)
+        assert len(materials) == 2
+        types = {material.metadata.type for material in materials}
+        assert types == {SourceType.FAQ, SourceType.ONBOARDING}
+        assert all(material.metadata.cohort == "cohort-x" for material in materials)
+    finally:
+        if materials:
+            del materials
+        gc.collect()
 
 
-def test_loader_renders_faq_json(tmp_path: Path) -> None:
+def test_loader_renders_faq_json(temp_dir: Path) -> None:
     """FAQ JSON is rendered into readable question/answer text."""
-    (tmp_path / "faqs").mkdir()
-    (tmp_path / "faqs" / "faq.json").write_text(
+    (temp_dir / "faqs").mkdir()
+    (temp_dir / "faqs" / "faq.json").write_text(
         '[{"question": "When do sessions start?", "answer": "At 10 AM."}]',
         encoding="utf-8",
     )
 
-    materials = load_materials(tmp_path, cohort="cohort-x")
+    materials: list[RawMaterial] = []
+    try:
+        materials = load_materials(temp_dir, cohort="cohort-x")
 
-    assert len(materials) == 1
-    assert "When do sessions start?" in materials[0].content
-    assert "At 10 AM." in materials[0].content
+        assert len(materials) == 1
+        assert "When do sessions start?" in materials[0].content
+        assert "At 10 AM." in materials[0].content
+    finally:
+        if materials:
+            del materials
+        gc.collect()
 
 
 def test_ingestion_stats_default_to_zero() -> None:
