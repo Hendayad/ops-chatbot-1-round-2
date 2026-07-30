@@ -49,4 +49,5 @@ class Notification(BaseModel):
     payload: NotificationPayload
     dedup_key: str
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    delivered_at: datetime | None = None
     status: NotificationStatus = NotificationStatus.PENDING

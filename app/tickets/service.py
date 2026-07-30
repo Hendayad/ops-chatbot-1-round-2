@@ -11,6 +11,7 @@ from __future__ import annotations
 import inspect
 from collections.abc import Awaitable, Sequence
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Protocol
 from uuid import uuid4
 
@@ -20,6 +21,12 @@ from sqlmodel import col, select
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from app.core.logging import logger
+from app.metrics.kpis import (
+    AT_RISK_ISSUES,
+    ESCALATIONS_TOTAL,
+    RESOLUTION_TIME,
+    SUPPORT_VOLUME,
+)
 from app.models.escalation_ticket import EscalationTicket
 from app.schemas.escalation import (
     ConversationSummary,
@@ -147,13 +154,20 @@ class TicketService:
             raise
 
         notification_delivered = await self._notify_ops(stored)
+
+        # --- M09 Instrumentation ---
+        cohort_id = getattr(request, "cohort_id", "default")
+        SUPPORT_VOLUME.labels(cohort=cohort_id, severity=stored.source).inc()
+        ESCALATIONS_TOTAL.labels(cohort=cohort_id, reason=request.reason).inc()
+
+        if getattr(request, "is_at_risk", False):
+            AT_RISK_ISSUES.labels(cohort=cohort_id, risk_level="high").inc()
+        # ---------------------------
+
         message = (
             f"Escalation stored and Operations notified with ticket ID {stored.id}."
             if notification_delivered
-            else (
-                f"Escalation stored with ticket ID {stored.id}; "
-                "the Operations notification could not be confirmed."
-            )
+            else (f"Escalation stored with ticket ID {stored.id}; the Operations notification could not be confirmed.")
         )
         return EscalationTriggerResult(
             triggered=True,
@@ -227,6 +241,19 @@ class TicketService:
                 ticket_service_operations_total.labels(operation=operation, outcome="not_found").inc()
                 raise TicketNotFoundError(normalized_id)
             ticket_service_operations_total.labels(operation=operation, outcome="success").inc()
+
+            # --- M09 Instrumentation: Track Resolution Time ---
+            if getattr(ticket, "created_at", None):
+                now = datetime.now(timezone.utc)
+                created_at = ticket.created_at
+                if created_at.tzinfo is None:
+                    created_at = created_at.replace(tzinfo=timezone.utc)
+
+                duration_seconds = (now - created_at).total_seconds()
+                cohort_id = getattr(ticket, "cohort_id", "default")
+                RESOLUTION_TIME.labels(cohort=cohort_id).observe(duration_seconds)
+            # --------------------------------------------------
+
             return ticket
         except TicketNotFoundError:
             raise

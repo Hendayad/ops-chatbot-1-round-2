@@ -16,6 +16,7 @@ from app.models.thread import Thread  # noqa: F401
 from app.models.user import User  # noqa: F401
 from app.models.notification import NotificationRecord  # noqa: F401
 from app.atrisk.state import AtRiskStateRecord  # noqa: F401
+from app.models.reminder_event import ReminderEvent  # noqa: F401
 
 # Alembic Config object
 config = context.config

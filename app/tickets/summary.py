@@ -205,13 +205,12 @@ def _truncate(text: str, limit: int, *, fallback: str = "Not available.") -> str
     return f"{value[: limit - 1].rstrip()}…"
 
 
-
-
 def _normalize_trigger(trigger: str) -> str:
     """Normalize enum-like or free-text escalation triggers for stable matching."""
     value = _truncate(str(trigger), 100, fallback="unknown_answer").lower()
     value = value.rsplit(".", maxsplit=1)[-1]
     return re.sub(r"[^a-z0-9]+", "_", value).strip("_") or "unknown_answer"
+
 
 def _clean_list(values: Sequence[str], *, max_items: int) -> list[str]:
     """Remove blank/duplicate list items and enforce privacy and size limits."""

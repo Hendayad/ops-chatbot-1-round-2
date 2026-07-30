@@ -227,6 +227,7 @@ class KBStore:
             chunks_written=stats.chunks_written,
         )
         return stats
+
     def list_materials(self) -> list[dict]:
         """List all materials currently in the knowledge base, with freshness info."""
         return self._repository.list_sources()

@@ -3,6 +3,10 @@
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
+from app.scheduler.scheduler import (
+    start_scheduler,
+    stop_scheduler,
+)
 from dotenv import load_dotenv
 from fastapi import (
     FastAPI,
@@ -68,14 +72,32 @@ async def lifespan(app: FastAPI):
         memory_service.initialize()
     except Exception as e:
         logger.exception("memory_service_pre_warm_failed", error=str(e))
+    # Start background scheduler
+    try:
+        start_scheduler()
+    except Exception as e:
+        logger.exception(
+            "scheduler_start_failed",
+            error=str(e),
+        )
 
     yield
 
-    # Cleanup on shutdown
+    # Stop scheduler
+    try:
+        stop_scheduler()
+        logger.info("scheduler_stopped")
+    except Exception as e:
+        logger.exception(
+            "scheduler_stop_failed",
+            error=str(e),
+        )
     await cache_service.close()
+
     if agent._connection_pool:
         await agent._connection_pool.close()
         logger.info("connection_pool_closed")
+
     logger.info("application_shutdown")
 
 
