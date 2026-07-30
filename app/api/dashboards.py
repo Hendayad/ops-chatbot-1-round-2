@@ -12,9 +12,12 @@ from app.core.logging import logger
 from app.dashboards.metrics import get_support_metrics
 from app.models.user import User
 from app.services.database import DatabaseService
+from fastapi import HTTPException
+
 
 router = APIRouter()
 db_service = DatabaseService()
+
 
 
 @router.get("/metrics")
@@ -38,6 +41,14 @@ async def get_dashboard_metrics(
     Returns:
         dict: support_volume, escalation_rate, and resolution_time (estimate).
     """
+    if user.role.value not in [
+        "admin",
+        "program_lead"
+    ]:
+        raise HTTPException(
+            status_code=403,
+            detail="Access denied"
+        )
     try:
         resolved_end = end or datetime.now(timezone.utc)
         resolved_start = start or (resolved_end - timedelta(days=7))

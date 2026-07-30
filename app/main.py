@@ -1,6 +1,7 @@
 """This file contains the main application entry point."""
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 from datetime import datetime
 from app.scheduler.scheduler import (
     start_scheduler,
