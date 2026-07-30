@@ -251,6 +251,24 @@
     border-radius: 6px;
   }
   @keyframes skeleton-loading { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+
+  /* --- sign-in modal: login lives here instead of an inline block on the
+       page, per mentor feedback that a login form shouldn't sit on top of
+       the dashboard. Closed by default; opened only via the header button. --- */
+  .modal-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.45);
+    align-items: center; justify-content: center;
+    z-index: 100;
+    padding: 20px;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal-box { width: min(440px, 100%); padding: 20px; }
+  .modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; gap: 10px; }
+  .modal-head h2 { font-size: 16px; }
+  .modal-actions { display: flex; align-items: center; gap: 14px; margin-top: 14px; flex-wrap: wrap; }
+  .modal-actions a { font-size: 12px; }
 </style>
 </head>
 <body>
@@ -261,42 +279,55 @@
       <h1>At-Risk Learners</h1>
       <div class="sub">Ops dashboard · reads /api/v1/atrisk</div>
     </div>
-    <div style="display:flex; gap:8px;">
+    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+      <span class="status-line" id="conn-status" style="margin:0;"><span class="dot idle"></span><span>Not signed in</span></span>
       <button class="secondary icon-btn" id="texture-toggle" title="Toggle colorblind-safe texture on bars" aria-pressed="false">Texture: off</button>
       <button class="secondary icon-btn" id="theme-toggle" title="Toggle light/dark theme">Theme: auto</button>
+      <button id="signin-btn">Sign in</button>
+      <button class="secondary" id="clear-token-btn" style="display:none;">Sign out</button>
     </div>
   </div>
 
-  <div class="panel conn-panel">
-    <div class="conn-row" id="login-row">
-      <div class="field">
-        <label for="login-email">Email</label>
-        <input id="login-email" type="email" placeholder="you@example.com" autocomplete="username">
+  <!-- Login lives in this closed-by-default modal, not an inline block on
+       the page (per mentor feedback on 2026-07-29) -- it only opens when
+       the "Sign in" button above is clicked. -->
+  <div class="modal-overlay" id="login-modal-overlay" role="dialog" aria-modal="true" aria-label="Sign in">
+    <div class="modal-box panel">
+      <div class="modal-head">
+        <h2>Sign in to the Ops dashboard</h2>
+        <button class="secondary icon-btn" id="modal-close-btn" type="button" aria-label="Close">✕</button>
       </div>
-      <div class="field">
-        <label for="login-password">Password</label>
-        <input id="login-password" type="password" placeholder="Your account password" autocomplete="current-password">
+      <div class="conn-row" id="login-row">
+        <div class="field">
+          <label for="login-email">Email</label>
+          <input id="login-email" type="email" placeholder="you@example.com" autocomplete="username">
+        </div>
+        <div class="field">
+          <label for="login-password">Password</label>
+          <input id="login-password" type="password" placeholder="Your account password" autocomplete="current-password">
+        </div>
       </div>
-      <div class="field checkbox-field">
+      <div class="field checkbox-field" style="margin-top:10px;">
         <input type="checkbox" id="remember-token" checked>
         <label for="remember-token">Keep me signed in on this device</label>
       </div>
-      <button id="connect-btn">Log in</button>
-      <button class="secondary" id="clear-token-btn">Sign out</button>
-    </div>
-    <div class="conn-row" id="token-row" style="display:none; margin-top:10px;">
-      <div class="field">
-        <label for="api-base">API base URL</label>
-        <input id="api-base" type="text" placeholder="e.g. https://api.example.com (blank = same origin)" autocomplete="off">
+      <div class="modal-actions">
+        <button id="login-submit-btn">Log in</button>
+        <a href="#" id="advanced-toggle">Have a token instead? Paste it directly</a>
       </div>
-      <div class="field token-field">
-        <label for="api-token">Bearer token</label>
-        <input id="api-token" type="password" placeholder="Paste token from POST /api/v1/auth/login" autocomplete="off">
+      <div class="conn-row" id="token-row" style="display:none; margin-top:10px;">
+        <div class="field">
+          <label for="api-base">API base URL</label>
+          <input id="api-base" type="text" placeholder="e.g. https://api.example.com (blank = same origin)" autocomplete="off">
+        </div>
+        <div class="field token-field">
+          <label for="api-token">Bearer token</label>
+          <input id="api-token" type="password" placeholder="Paste token from POST /api/v1/auth/login" autocomplete="off">
+        </div>
+        <button id="token-connect-btn">Use this token</button>
       </div>
-      <button id="token-connect-btn">Use this token</button>
+      <div class="status-line" id="modal-status"><span class="dot idle"></span><span></span></div>
     </div>
-    <div class="status-line" id="conn-status"><span class="dot idle"></span><span>Not signed in — log in with your Ops account above.</span></div>
-    <div class="status-line"><a href="#" id="advanced-toggle" style="font-size:12px;">Have a token already instead? Use it directly</a></div>
   </div>
 
   <div class="filter-row">
@@ -409,16 +440,19 @@
   var el = {
     apiBase: document.getElementById("api-base"),
     apiToken: document.getElementById("api-token"),
-    loginEmail: document.getElementById("login-email"),
-    loginPassword: document.getElementById("login-password"),
-    loginRow: document.getElementById("login-row"),
     tokenRow: document.getElementById("token-row"),
-    advancedToggle: document.getElementById("advanced-toggle"),
     remember: document.getElementById("remember-token"),
-    connectBtn: document.getElementById("connect-btn"),
     tokenConnectBtn: document.getElementById("token-connect-btn"),
     clearBtn: document.getElementById("clear-token-btn"),
     connStatus: document.getElementById("conn-status"),
+    signinBtn: document.getElementById("signin-btn"),
+    modalOverlay: document.getElementById("login-modal-overlay"),
+    modalCloseBtn: document.getElementById("modal-close-btn"),
+    modalStatus: document.getElementById("modal-status"),
+    loginEmail: document.getElementById("login-email"),
+    loginPassword: document.getElementById("login-password"),
+    loginSubmitBtn: document.getElementById("login-submit-btn"),
+    advancedToggle: document.getElementById("advanced-toggle"),
     cohortId: document.getElementById("cohort-id"),
     runDate: document.getElementById("run-date"),
     trendWindow: document.getElementById("trend-window"),
@@ -479,6 +513,50 @@
     el.connStatus.querySelector("span:last-child").textContent = text;
   }
 
+  function setModalStatus(kind, text) {
+    el.modalStatus.innerHTML = '<span class="dot ' + kind + '"></span><span></span>';
+    el.modalStatus.querySelector("span:last-child").textContent = text;
+  }
+
+  function updateAuthUI(isSignedIn) {
+    el.signinBtn.style.display = isSignedIn ? "none" : "";
+    el.clearBtn.style.display = isSignedIn ? "" : "none";
+  }
+
+  function openLoginModal() {
+    el.modalOverlay.classList.add("open");
+    setModalStatus("idle", "");
+    el.loginEmail.focus();
+  }
+
+  function closeLoginModal() {
+    el.modalOverlay.classList.remove("open");
+    el.loginPassword.value = "";
+  }
+
+  async function apiLogin(email, password) {
+    var base = el.apiBase.value.trim().replace(/\/+$/, "");
+    var body = new URLSearchParams({ email: email, password: password, grant_type: "password" });
+    var resp;
+    try {
+      resp = await fetch(base + "/api/v1/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: body.toString()
+      });
+    } catch (networkErr) {
+      throw { kind: "network", message: "Could not reach the API — check that the server is running." };
+    }
+    if (!resp.ok) {
+      var detail = "Login failed";
+      try { var errBody = await resp.json(); detail = errBody.detail || detail; } catch (e) {}
+      throw { kind: "auth", message: detail };
+    }
+    var data = await resp.json();
+    if (!data.access_token) throw { kind: "auth", message: "Login succeeded but no token was returned." };
+    return data.access_token;
+  }
+
   // No token baked in — this file is safe to commit/share as-is. Blank base
   // means "same origin as this page", which is correct now that the page
   // is served by the FastAPI app itself rather than opened as a local file.
@@ -514,29 +592,6 @@
     var separator = path.indexOf("?") === -1 ? "?" : "&";
     var cohortParam = cohortId ? separator + "cohort_id=" + encodeURIComponent(cohortId) : "";
     return base + "/api/v1/atrisk" + path + cohortParam;
-  }
-
-  async function apiLogin(email, password) {
-    var base = el.apiBase.value.trim().replace(/\/+$/, "");
-    var body = new URLSearchParams({ email: email, password: password, grant_type: "password" });
-    var resp;
-    try {
-      resp = await fetch(base + "/api/v1/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: body.toString()
-      });
-    } catch (networkErr) {
-      throw { kind: "network", message: "Could not reach the API — check that the server is running." };
-    }
-    if (!resp.ok) {
-      var detail = "Login failed";
-      try { var errBody = await resp.json(); detail = errBody.detail || detail; } catch (e) {}
-      throw { kind: "auth", message: detail };
-    }
-    var data = await resp.json();
-    if (!data.access_token) throw { kind: "auth", message: "Login succeeded but no token was returned." };
-    return data.access_token;
   }
 
   async function apiGet(path) {
@@ -898,28 +953,10 @@
     }
   }
 
-  el.connectBtn.addEventListener("click", async function () {
-    var email = el.loginEmail.value.trim();
-    var password = el.loginPassword.value;
-    if (!email || !password) {
-      setConnStatus("err", "Enter your email and password.");
-      return;
-    }
-    setConnStatus("idle", "Logging in…");
-    try {
-      var token = await apiLogin(email, password);
-      el.apiToken.value = token;
-      el.loginPassword.value = ""; // never held onto longer than needed
-      persistToken(token, el.apiBase.value.trim());
-      loadAll();
-    } catch (err) {
-      setConnStatus("err", (err && err.message) || "Login failed.");
-    }
-  });
-
-  el.tokenConnectBtn.addEventListener("click", function () {
-    persistToken(el.apiToken.value.trim(), el.apiBase.value.trim());
-    loadAll();
+  el.signinBtn.addEventListener("click", openLoginModal);
+  el.modalCloseBtn.addEventListener("click", closeLoginModal);
+  el.modalOverlay.addEventListener("click", function (evt) {
+    if (evt.target === el.modalOverlay) closeLoginModal();
   });
 
   el.advancedToggle.addEventListener("click", function (evt) {
@@ -927,16 +964,48 @@
     var showingToken = el.tokenRow.style.display !== "none";
     el.tokenRow.style.display = showingToken ? "none" : "flex";
     el.advancedToggle.textContent = showingToken
-      ? "Have a token already instead? Use it directly"
+      ? "Have a token instead? Paste it directly"
       : "Back to email/password login";
+  });
+
+  el.loginSubmitBtn.addEventListener("click", async function () {
+    var email = el.loginEmail.value.trim();
+    var password = el.loginPassword.value;
+    if (!email || !password) {
+      setModalStatus("err", "Enter your email and password.");
+      return;
+    }
+    el.loginSubmitBtn.disabled = true;
+    setModalStatus("idle", "Logging in…");
+    try {
+      var token = await apiLogin(email, password);
+      el.apiToken.value = token;
+      el.loginPassword.value = ""; // never held onto longer than needed
+      persistToken(token, el.apiBase.value.trim());
+      updateAuthUI(true);
+      closeLoginModal();
+      loadAll();
+    } catch (err) {
+      setModalStatus("err", (err && err.message) || "Login failed.");
+    } finally {
+      el.loginSubmitBtn.disabled = false;
+    }
+  });
+  el.loginEmail.addEventListener("keydown", function (e) { if (e.key === "Enter") el.loginPassword.focus(); });
+  el.loginPassword.addEventListener("keydown", function (e) { if (e.key === "Enter") el.loginSubmitBtn.click(); });
+
+  el.tokenConnectBtn.addEventListener("click", function () {
+    persistToken(el.apiToken.value.trim(), el.apiBase.value.trim());
+    updateAuthUI(true);
+    closeLoginModal();
+    loadAll();
   });
 
   el.clearBtn.addEventListener("click", function () {
     el.apiToken.value = "";
-    el.loginEmail.value = "";
-    el.loginPassword.value = "";
     localStorage.removeItem(LS_TOKEN_KEY);
     localStorage.removeItem(LS_BASE_KEY);
+    updateAuthUI(false);
     setConnStatus("idle", "Signed out.");
     renderTilesEmpty();
     renderBarChartEmpty("No data yet.");
@@ -954,8 +1023,10 @@
   el.runDate.value = today.toISOString().slice(0, 10);
 
   if (hadSavedSession && el.apiToken.value.trim()) {
+    updateAuthUI(true);
     loadAll();
   } else {
+    updateAuthUI(false);
     renderTilesEmpty();
     renderBarChartEmpty("No data yet.");
     renderTrendChartEmpty();

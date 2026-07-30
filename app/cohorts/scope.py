@@ -1,9 +1,4 @@
-<<<<<<< Updated upstream
-from typing import List, Dict, Any
-
-=======
-﻿"""Cohort scoping utility for knowledge retrieval and state management."""
->>>>>>> Stashed changes
+"""Cohort scoping utility for knowledge retrieval and state management."""
 
 from typing import Any, Dict, List, Optional
 
@@ -24,7 +19,7 @@ def scope_retrieval_by_cohort(
     for doc in all_documents:
         metadata = doc.get("metadata")
         doc_cohort = doc.get("cohort_id")
-        
+
         # Check primary cohort_id field or nested metadata dictionary
         if doc_cohort == cohort_id:
             scoped_docs.append(doc)
