@@ -1,0 +1,10 @@
+{
+  "cohort-july-2026": {
+    "name": "July 2026 Operations Cohort",
+    "materials_root": "materials/cohort-july-2026"
+  },
+  "cohort-sept-2026": {
+    "name": "September 2026 Operations Cohort",
+    "materials_root": "materials/cohort-sept-2026"
+  }
+}

@@ -286,3 +286,40 @@ def test_every_panel_has_a_title_and_a_query():
     for panel in dashboard["panels"]:
         assert panel.get("title"), f"panel {panel.get('id')} has no title"
         assert panel.get("targets"), f"panel {panel['title']} has no query"
+
+
+# --- M08 connector seam ---
+
+
+def test_connector_issues_are_empty_without_a_registered_source():
+    from app.dashboards.aggregate import get_connector_issues, set_connector_source
+
+    set_connector_source(None)
+    assert get_connector_issues() == []
+
+
+def test_registered_connector_issues_reach_the_aggregate():
+    from app.dashboards.aggregate import get_connector_issues, set_connector_source
+
+    set_connector_source(lambda: [{"id": "ext-1", "status": "open"}])
+    try:
+        combined = aggregate_open_issues([{"id": 1, "status": "open"}], get_connector_issues())
+        assert combined["total_open"] == 2
+        assert combined["total_issues"] == 2
+    finally:
+        set_connector_source(None)
+
+
+def test_a_broken_connector_does_not_blank_the_dashboard():
+    """Internal tickets must still render when the external connector fails."""
+    from app.dashboards.aggregate import get_connector_issues, set_connector_source
+
+    def broken():
+        raise RuntimeError("connector unreachable")
+
+    set_connector_source(broken)
+    try:
+        combined = aggregate_open_issues([{"id": 1, "status": "open"}], get_connector_issues())
+        assert combined["total_open"] == 1
+    finally:
+        set_connector_source(None)

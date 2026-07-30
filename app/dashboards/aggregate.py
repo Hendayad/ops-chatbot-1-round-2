@@ -1,12 +1,45 @@
 """Open-issues aggregation and simple threshold alerts for the Ops dashboard (M09)."""
 
+from collections.abc import Callable
 from typing import Any
+
+from app.core.logging import logger
 
 OPEN_STATUSES = {"open", "in_progress"}
 
 _ESCALATION_RATE_ALERT_THRESHOLD = 0.5
 _RESOLUTION_TIME_ALERT_SECONDS = 86400  # 1 day
 _OPEN_ISSUES_ALERT_THRESHOLD = 20
+
+
+# --- M08 connector seam ---
+
+# The external ticket connector (M08) does not exist yet. Rather than hardcode
+# an empty list at the call site, the dashboard asks here. M08 registers its
+# reader once and the dashboard picks it up with no further change.
+_connector_source: Callable[[], list[dict[str, Any]]] | None = None
+
+
+def set_connector_source(source: Callable[[], list[dict[str, Any]]] | None) -> None:
+    """Register the reader that returns open issues from the external connector."""
+    global _connector_source
+    _connector_source = source
+
+
+def get_connector_issues() -> list[dict[str, Any]]:
+    """Return open issues from the external connector, or none if unavailable.
+
+    A connector failure must not blank the whole dashboard, so an error is
+    logged and treated as "no connector issues"; the internal ticket half of
+    the view still renders.
+    """
+    if _connector_source is None:
+        return []
+    try:
+        return list(_connector_source())
+    except Exception as exc:
+        logger.exception("connector_issue_fetch_failed", error=str(exc))
+        return []
 
 
 def aggregate_open_issues(
@@ -29,7 +62,9 @@ def aggregate_open_issues(
     }
 
 
-def build_alerts(escalation_rate: float, resolution_time: list[dict[str, Any]], total_open: int) -> list[dict[str, str]]:
+def build_alerts(
+    escalation_rate: float, resolution_time: list[dict[str, Any]], total_open: int
+) -> list[dict[str, str]]:
     """Derive simple threshold-based alerts from already-computed dashboard metrics.
 
     No new data collection happens here - each alert is just a flag raised

@@ -18,8 +18,12 @@ Run directly:  python -m evals.cohort_isolation
 """
 
 import asyncio
+import json
+import os
+import tempfile
 from typing import Any
 
+from app.cohorts.config import cohort_config, is_servable_cohort
 from app.cohorts.scope import find_leaked_items, scope_by_cohort, validate_cohort_access
 from app.graph.nodes.answer import (
     _citations_are_valid,
@@ -206,9 +210,35 @@ def evaluate_answer_path() -> list[dict[str, Any]]:
     return reports
 
 
+def evaluate_config_gating() -> list[dict[str, Any]]:
+    """Level 4: a cohort absent from the configuration is served nothing.
+
+    Isolation has two halves. app.cohorts.scope decides whether an item belongs
+    to a cohort; the configuration decides whether the cohort exists at all. A
+    cohort with no config entry has no materials of its own, so answering it
+    could only mean serving somebody else's.
+    """
+    original_path = cohort_config.config_path
+    with tempfile.TemporaryDirectory() as directory:
+        config_path = os.path.join(directory, "cohorts_config.json")
+        with open(config_path, "w", encoding="utf-8") as config_file:
+            json.dump({"cohort-a": {"name": "A", "materials_root": "materials/a"}}, config_file)
+
+        cohort_config.config_path = config_path
+        try:
+            known = is_servable_cohort("cohort-a")
+            unknown = is_servable_cohort("cohort-zzz")
+            outcome = asyncio.run(generate_grounded_answer("when is the deadline", cohort="cohort-zzz"))
+        finally:
+            cohort_config.config_path = original_path
+
+    gating_passed = known is True and unknown is False and outcome.escalation_reason == "unknown_cohort"
+    return [_report("config_gate_refuses_unconfigured_cohort", gating_passed, refusal=outcome.escalation_reason)]
+
+
 def run_evaluation() -> list[dict[str, Any]]:
     """Run every isolation case and return one report per case."""
-    return evaluate_scope_rules() + evaluate_retrieval_path() + evaluate_answer_path()
+    return evaluate_scope_rules() + evaluate_retrieval_path() + evaluate_answer_path() + evaluate_config_gating()
 
 
 def main() -> None:
