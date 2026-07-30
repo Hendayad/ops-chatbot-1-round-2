@@ -1,7 +1,7 @@
 """Data contracts describing a learner's progress within a cohort.
 
 This module defines the canonical shape of "learner progress" data that
-feeds the at-risk signal detector (see ``app.risk.signals``). It is
+feeds the at-risk signal detector (see ``app.atrisk.signals``). It is
 intentionally decoupled from the signal-computation logic: anything that
 can produce a ``LearnerProgress`` instance (a DB query, a batch ETL job,
 a test fixture) can be fed into the risk engine without changes to either

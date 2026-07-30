@@ -6,12 +6,14 @@ endpoints like authentication and chatbot functionality.
 
 from app.prefs.api import router as notification_preferences_router
 from fastapi import APIRouter
-from app.kb.admin_api import router as kb_admin_router
+
 from app.api.dashboards import router as dashboards_router
+from app.api.v1.atrisk import router as atrisk_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.chatbot import router as chatbot_router
 from app.api.v1.tickets import router as tickets_router
 from app.core.logging import logger
+from app.kb.admin_api import router as kb_admin_router
 
 api_router = APIRouter()
 

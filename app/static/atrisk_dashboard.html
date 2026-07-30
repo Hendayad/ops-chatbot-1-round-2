@@ -1,0 +1,966 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>At-Risk Learners — Ops Dashboard</title>
+<style>
+  :root { color-scheme: light; }
+
+  .viz-root {
+    color-scheme: light;
+    --page-plane:     #f9f9f7;
+    --surface-1:      #fcfcfb;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --muted:          #898781;
+    --gridline:       #e1e0d9;
+    --baseline:       #c3c2b7;
+    --border:         rgba(11,11,11,0.10);
+    --success-text:   #006300;
+
+    --series-1: #2a78d6; /* blue      — missed deadlines */
+    --series-2: #008300; /* green     — inactivity */
+    --series-3: #e87ba4; /* magenta   — low progress */
+    --series-4: #eda100; /* yellow    — low feedback */
+
+    --status-good:     #0ca30c;
+    --status-warning:  #fab219;
+    --status-serious:  #ec835a;
+    --status-critical: #d03b3b;
+
+    --hatch-1: #184f95;
+    --hatch-2: #004d00;
+    --hatch-3: #b04570;
+    --hatch-4: #a97800;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz-root {
+      color-scheme: dark;
+      --page-plane:     #0d0d0d;
+      --surface-1:      #1a1a19;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --muted:          #898781;
+      --gridline:       #2c2c2a;
+      --baseline:       #383835;
+      --border:         rgba(255,255,255,0.10);
+      --success-text:   #0ca30c;
+
+      --series-1: #3987e5;
+      --series-2: #008300;
+      --series-3: #d55181;
+      --series-4: #c98500;
+
+      --hatch-1: #cfe0f8;
+      --hatch-2: #a9e6a9;
+      --hatch-3: #f6d3e1;
+      --hatch-4: #f5deae;
+    }
+  }
+  :root[data-theme="dark"] .viz-root {
+    color-scheme: dark;
+    --page-plane:     #0d0d0d;
+    --surface-1:      #1a1a19;
+    --text-primary:   #ffffff;
+    --text-secondary: #c3c2b7;
+    --muted:          #898781;
+    --gridline:       #2c2c2a;
+    --baseline:       #383835;
+    --border:         rgba(255,255,255,0.10);
+    --success-text:   #0ca30c;
+
+    --series-1: #3987e5;
+    --series-2: #008300;
+    --series-3: #d55181;
+    --series-4: #c98500;
+
+    --hatch-1: #cfe0f8;
+    --hatch-2: #a9e6a9;
+    --hatch-3: #f6d3e1;
+    --hatch-4: #f5deae;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  /* Page-level background/text color live on .viz-root, not body — body sits
+     OUTSIDE the .viz-root scope that defines these custom properties, so a
+     var() referenced from body would never see the dark-mode values. */
+  .viz-root {
+    display: block;
+    min-height: 100vh;
+    padding: 24px;
+    background: var(--page-plane);
+    color: var(--text-primary);
+  }
+  h1, h2, h3 { font-weight: 600; margin: 0; }
+  a { color: var(--series-1); }
+
+  .top-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 16px; margin-bottom: 20px; flex-wrap: wrap;
+  }
+  .top-bar h1 { font-size: 20px; }
+  .top-bar .sub { color: var(--text-secondary); font-size: 13px; margin-top: 2px; }
+
+  .panel {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+  }
+
+  /* --- connection / token bar --- */
+  .conn-panel { margin-bottom: 18px; }
+  .conn-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { font-size: 12px; color: var(--text-secondary); }
+  .field input, .field select {
+    font: inherit; font-size: 13px;
+    padding: 7px 9px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--page-plane);
+    color: var(--text-primary);
+    min-width: 220px;
+  }
+  .field.token-field input { min-width: 320px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .field.checkbox-field { flex-direction: row; align-items: center; gap: 6px; }
+  .field.checkbox-field label { font-size: 13px; color: var(--text-primary); }
+  button {
+    font: inherit; font-size: 13px; font-weight: 600;
+    padding: 8px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--series-1);
+    color: #fff;
+    cursor: pointer;
+  }
+  button.secondary { background: transparent; color: var(--text-primary); }
+  button.icon-btn { padding: 8px 10px; }
+  button:disabled { opacity: 0.5; cursor: default; }
+
+  .status-line { font-size: 13px; margin-top: 8px; display: flex; align-items: center; gap: 6px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .dot.ok { background: var(--status-good); }
+  .dot.err { background: var(--status-critical); }
+  .dot.idle { background: var(--muted); }
+
+  /* --- filter row --- */
+  .filter-row {
+    display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap;
+    margin-bottom: 18px;
+  }
+
+  /* --- stat tiles --- */
+  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 20px; }
+  @media (max-width: 820px) { .tiles { grid-template-columns: 1fr; } }
+  .tile { padding: 18px; }
+  .tile .label { font-size: 13px; color: var(--text-secondary); margin-bottom: 10px; }
+  .tile .value-row { display: flex; align-items: baseline; gap: 10px; }
+  .tile .value { font-size: 40px; font-weight: 600; line-height: 1; letter-spacing: -0.01em; }
+  .tile .badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 12px; font-weight: 600;
+    padding: 3px 8px; border-radius: 999px;
+    color: #fff;
+  }
+  .tile .badge.good { background: var(--status-good); }
+  .tile .badge.warning { background: var(--status-warning); color: #241b00; }
+  .tile .badge.critical { background: var(--status-critical); }
+  .tile .foot { font-size: 12px; color: var(--muted); margin-top: 10px; }
+
+  /* --- chart section --- */
+  .charts { display: grid; grid-template-columns: 1fr 1.4fr; gap: 14px; margin-bottom: 20px; }
+  @media (max-width: 980px) { .charts { grid-template-columns: 1fr; } }
+  .chart-panel { padding: 18px; position: relative; }
+  .chart-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; gap: 10px; flex-wrap: wrap; }
+  .chart-head h2 { font-size: 14px; }
+  .chart-head .chart-controls { display: flex; gap: 8px; align-items: center; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 10px; font-size: 12px; color: var(--text-secondary); }
+  .legend .item { display: flex; align-items: center; gap: 6px; }
+  .legend .swatch { width: 10px; height: 10px; border-radius: 2px; }
+
+  svg text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .axis-label { fill: var(--muted); font-size: 11px; }
+  .grid-line { stroke: var(--gridline); stroke-width: 1; }
+  .baseline-line { stroke: var(--baseline); stroke-width: 1; }
+  .value-label { fill: var(--text-primary); font-size: 12px; font-weight: 600; }
+  .cat-label { fill: var(--text-primary); font-size: 12px; }
+
+  .bar-hatch { display: none; }
+  body.texture-on .bar-hatch { display: block; }
+
+  .hbar-row { cursor: pointer; }
+  .hbar-track { fill: none; pointer-events: all; }
+  .trend-hit { pointer-events: all; }
+
+  /* --- tooltip --- */
+  .viz-tooltip {
+    position: fixed;
+    pointer-events: none;
+    background: var(--text-primary);
+    color: var(--surface-1);
+    font-size: 12px;
+    line-height: 1.4;
+    padding: 7px 10px;
+    border-radius: 6px;
+    z-index: 50;
+    opacity: 0;
+    transform: translate(-50%, -110%);
+    transition: opacity 0.08s ease;
+    max-width: 220px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+  }
+  .viz-tooltip.show { opacity: 1; }
+  .viz-tooltip .t-title { font-weight: 600; margin-bottom: 2px; }
+
+  /* --- table --- */
+  .table-panel { padding: 18px; }
+  .table-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 10px; flex-wrap: wrap; }
+  .table-head h2 { font-size: 14px; }
+  .table-head .table-controls { display: flex; gap: 8px; align-items: center; }
+  .search-input {
+    font: inherit; font-size: 13px; padding: 7px 9px;
+    border: 1px solid var(--border); border-radius: 6px;
+    background: var(--page-plane); color: var(--text-primary);
+    min-width: 200px;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th {
+    text-align: left; font-weight: 600; color: var(--text-secondary);
+    padding: 8px 10px; border-bottom: 1px solid var(--gridline);
+    position: sticky; top: 0; background: var(--surface-1);
+  }
+  tbody td { padding: 8px 10px; border-bottom: 1px solid var(--gridline); font-variant-numeric: tabular-nums; }
+  tbody tr:hover td { background: rgba(127,127,127,0.06); }
+  .table-scroll { max-height: 360px; overflow-y: auto; border-radius: 6px; }
+  .empty-state, .error-state, .loading-state {
+    padding: 28px 10px; text-align: center; color: var(--text-secondary); font-size: 13px;
+  }
+  .error-state { color: var(--status-critical); }
+  .table-foot { font-size: 12px; color: var(--muted); margin-top: 10px; }
+
+  .skeleton {
+    background: linear-gradient(90deg, var(--gridline) 25%, var(--page-plane) 37%, var(--gridline) 63%);
+    background-size: 400% 100%;
+    animation: skeleton-loading 1.4s ease infinite;
+    border-radius: 6px;
+  }
+  @keyframes skeleton-loading { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+</style>
+</head>
+<body>
+<div class="viz-root">
+
+  <div class="top-bar">
+    <div>
+      <h1>At-Risk Learners</h1>
+      <div class="sub">Ops dashboard · reads /api/v1/atrisk</div>
+    </div>
+    <div style="display:flex; gap:8px;">
+      <button class="secondary icon-btn" id="texture-toggle" title="Toggle colorblind-safe texture on bars" aria-pressed="false">Texture: off</button>
+      <button class="secondary icon-btn" id="theme-toggle" title="Toggle light/dark theme">Theme: auto</button>
+    </div>
+  </div>
+
+  <div class="panel conn-panel">
+    <div class="conn-row" id="login-row">
+      <div class="field">
+        <label for="login-email">Email</label>
+        <input id="login-email" type="email" placeholder="you@example.com" autocomplete="username">
+      </div>
+      <div class="field">
+        <label for="login-password">Password</label>
+        <input id="login-password" type="password" placeholder="Your account password" autocomplete="current-password">
+      </div>
+      <div class="field checkbox-field">
+        <input type="checkbox" id="remember-token" checked>
+        <label for="remember-token">Keep me signed in on this device</label>
+      </div>
+      <button id="connect-btn">Log in</button>
+      <button class="secondary" id="clear-token-btn">Sign out</button>
+    </div>
+    <div class="conn-row" id="token-row" style="display:none; margin-top:10px;">
+      <div class="field">
+        <label for="api-base">API base URL</label>
+        <input id="api-base" type="text" placeholder="e.g. https://api.example.com (blank = same origin)" autocomplete="off">
+      </div>
+      <div class="field token-field">
+        <label for="api-token">Bearer token</label>
+        <input id="api-token" type="password" placeholder="Paste token from POST /api/v1/auth/login" autocomplete="off">
+      </div>
+      <button id="token-connect-btn">Use this token</button>
+    </div>
+    <div class="status-line" id="conn-status"><span class="dot idle"></span><span>Not signed in — log in with your Ops account above.</span></div>
+    <div class="status-line"><a href="#" id="advanced-toggle" style="font-size:12px;">Have a token already instead? Use it directly</a></div>
+  </div>
+
+  <div class="filter-row">
+    <div class="field">
+      <label for="cohort-id">Cohort</label>
+      <input id="cohort-id" type="text" placeholder="e.g. cohort_demo" autocomplete="off">
+    </div>
+    <div class="field">
+      <label for="run-date">Run date</label>
+      <input id="run-date" type="date">
+    </div>
+    <div class="field">
+      <label for="trend-window">Trend window</label>
+      <select id="trend-window">
+        <option value="7">Last 7 days</option>
+        <option value="14" selected>Last 14 days</option>
+        <option value="30">Last 30 days</option>
+        <option value="90">Last 90 days</option>
+      </select>
+    </div>
+    <button id="refresh-btn" class="secondary">Refresh</button>
+  </div>
+
+  <div class="tiles">
+    <div class="panel tile" id="tile-total">
+      <div class="label">Total learners evaluated</div>
+      <div class="value-row"><span class="value" id="tile-total-value">—</span></div>
+      <div class="foot" id="tile-total-foot">&nbsp;</div>
+    </div>
+    <div class="panel tile" id="tile-count">
+      <div class="label">At-risk learners</div>
+      <div class="value-row">
+        <span class="value" id="tile-count-value">—</span>
+        <span class="badge" id="tile-count-badge" style="display:none;"></span>
+      </div>
+      <div class="foot" id="tile-count-foot">&nbsp;</div>
+    </div>
+    <div class="panel tile" id="tile-pct">
+      <div class="label">At-risk %</div>
+      <div class="value-row">
+        <span class="value" id="tile-pct-value">—</span>
+        <span class="badge" id="tile-pct-badge" style="display:none;"></span>
+      </div>
+      <div class="foot" id="tile-pct-foot">&nbsp;</div>
+    </div>
+  </div>
+
+  <div class="charts">
+    <div class="panel chart-panel">
+      <div class="chart-head">
+        <h2>Risk reasons breakdown</h2>
+      </div>
+      <div id="bar-chart-slot"><div class="loading-state">No data yet.</div></div>
+    </div>
+
+    <div class="panel chart-panel">
+      <div class="chart-head">
+        <h2>At-risk count over time</h2>
+      </div>
+      <div id="trend-chart-slot"><div class="loading-state">No data yet.</div></div>
+    </div>
+  </div>
+
+  <div class="panel table-panel">
+    <div class="table-head">
+      <h2>Currently at-risk learners</h2>
+      <div class="table-controls">
+        <input type="text" class="search-input" id="learner-search" placeholder="Filter learner ID…">
+        <span class="table-foot" id="learner-count-label"></span>
+      </div>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th style="width:60px;">#</th><th>Learner ID</th></tr></thead>
+        <tbody id="learner-table-body">
+          <tr><td colspan="2"><div class="empty-state">No data yet.</div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<div class="viz-tooltip" id="tooltip"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ---------------- config / thresholds ---------------- */
+  // At-risk % bands driving the stat-tile status color + badge.
+  // Tune these to match your program's actual risk tolerance.
+  var RISK_BANDS = { good: 10, warning: 25 }; // <10% good, 10–25% warning, >25% critical
+
+  var REASON_SERIES = [
+    { key: "missed_deadlines_count", label: "Missed deadlines", varName: "--series-1", hatchVar: "--hatch-1" },
+    { key: "inactive_count",         label: "Inactivity",       varName: "--series-2", hatchVar: "--hatch-2" },
+    { key: "low_progress_count",     label: "Low progress",     varName: "--series-3", hatchVar: "--hatch-3" },
+    { key: "low_feedback_count",     label: "Low feedback",     varName: "--series-4", hatchVar: "--hatch-4" }
+  ];
+
+  var LS_TOKEN_KEY = "atrisk_dashboard_token";
+  var LS_BASE_KEY = "atrisk_dashboard_api_base";
+  var LS_COHORT_KEY = "atrisk_dashboard_cohort_id";
+  var DEMO_DEFAULT_COHORT = "cohort_demo";
+  var LS_THEME_KEY = "atrisk_dashboard_theme";
+  var LS_REMEMBER_KEY = "atrisk_dashboard_remember";
+
+  /* ---------------- element refs ---------------- */
+  var el = {
+    apiBase: document.getElementById("api-base"),
+    apiToken: document.getElementById("api-token"),
+    loginEmail: document.getElementById("login-email"),
+    loginPassword: document.getElementById("login-password"),
+    loginRow: document.getElementById("login-row"),
+    tokenRow: document.getElementById("token-row"),
+    advancedToggle: document.getElementById("advanced-toggle"),
+    remember: document.getElementById("remember-token"),
+    connectBtn: document.getElementById("connect-btn"),
+    tokenConnectBtn: document.getElementById("token-connect-btn"),
+    clearBtn: document.getElementById("clear-token-btn"),
+    connStatus: document.getElementById("conn-status"),
+    cohortId: document.getElementById("cohort-id"),
+    runDate: document.getElementById("run-date"),
+    trendWindow: document.getElementById("trend-window"),
+    refreshBtn: document.getElementById("refresh-btn"),
+    tileTotalValue: document.getElementById("tile-total-value"),
+    tileTotalFoot: document.getElementById("tile-total-foot"),
+    tileCountValue: document.getElementById("tile-count-value"),
+    tileCountBadge: document.getElementById("tile-count-badge"),
+    tileCountFoot: document.getElementById("tile-count-foot"),
+    tilePctValue: document.getElementById("tile-pct-value"),
+    tilePctBadge: document.getElementById("tile-pct-badge"),
+    tilePctFoot: document.getElementById("tile-pct-foot"),
+    barSlot: document.getElementById("bar-chart-slot"),
+    trendSlot: document.getElementById("trend-chart-slot"),
+    tableBody: document.getElementById("learner-table-body"),
+    learnerSearch: document.getElementById("learner-search"),
+    learnerCountLabel: document.getElementById("learner-count-label"),
+    tooltip: document.getElementById("tooltip"),
+    themeToggle: document.getElementById("theme-toggle"),
+    textureToggle: document.getElementById("texture-toggle")
+  };
+
+  var state = {
+    learners: [],
+    connected: false
+  };
+
+  /* ---------------- theme + texture toggles ---------------- */
+  function applyTheme(mode) {
+    if (mode === "light" || mode === "dark") {
+      document.documentElement.setAttribute("data-theme", mode);
+      el.themeToggle.textContent = "Theme: " + mode;
+    } else {
+      document.documentElement.removeAttribute("data-theme");
+      el.themeToggle.textContent = "Theme: auto";
+    }
+  }
+  (function initTheme() {
+    var saved = localStorage.getItem(LS_THEME_KEY);
+    applyTheme(saved || "auto");
+    el.themeToggle.addEventListener("click", function () {
+      var cur = document.documentElement.getAttribute("data-theme") || "auto";
+      var next = cur === "auto" ? "light" : cur === "light" ? "dark" : "auto";
+      applyTheme(next);
+      localStorage.setItem(LS_THEME_KEY, next);
+    });
+  })();
+
+  el.textureToggle.addEventListener("click", function () {
+    var on = document.body.classList.toggle("texture-on");
+    el.textureToggle.textContent = "Texture: " + (on ? "on" : "off");
+    el.textureToggle.setAttribute("aria-pressed", String(on));
+  });
+
+  /* ---------------- connection state ---------------- */
+  function setConnStatus(kind, text) {
+    el.connStatus.innerHTML = '<span class="dot ' + kind + '"></span><span></span>';
+    el.connStatus.querySelector("span:last-child").textContent = text;
+  }
+
+  // No token baked in — this file is safe to commit/share as-is. Blank base
+  // means "same origin as this page", which is correct now that the page
+  // is served by the FastAPI app itself rather than opened as a local file.
+  var DEMO_DEFAULT_BASE = "";
+  var DEMO_DEFAULT_TOKEN = "";
+
+  function loadSavedConnection() {
+    var remember = localStorage.getItem(LS_REMEMBER_KEY);
+    el.remember.checked = remember !== "false";
+    var savedToken = localStorage.getItem(LS_TOKEN_KEY);
+    var savedBase = localStorage.getItem(LS_BASE_KEY);
+    el.cohortId.value = localStorage.getItem(LS_COHORT_KEY) || DEMO_DEFAULT_COHORT;
+    if (el.remember.checked && savedToken) {
+      el.apiToken.value = savedToken;
+      el.apiBase.value = savedBase || DEMO_DEFAULT_BASE;
+      return true;
+    } else if (DEMO_DEFAULT_TOKEN) {
+      el.apiToken.value = DEMO_DEFAULT_TOKEN;
+      el.apiBase.value = DEMO_DEFAULT_BASE;
+      return true;
+    }
+    el.apiBase.value = DEMO_DEFAULT_BASE;
+    return false;
+  }
+
+  // Every /atrisk/* endpoint now requires cohort_id (Ops requests must
+  // always be scoped to one cohort -- see app/api/v1/atrisk.py) -- appended
+  // here centrally so none of the individual call sites in loadAll() need
+  // to know about it.
+  function apiUrl(path) {
+    var base = el.apiBase.value.trim().replace(/\/+$/, "");
+    var cohortId = (el.cohortId.value || "").trim();
+    var separator = path.indexOf("?") === -1 ? "?" : "&";
+    var cohortParam = cohortId ? separator + "cohort_id=" + encodeURIComponent(cohortId) : "";
+    return base + "/api/v1/atrisk" + path + cohortParam;
+  }
+
+  async function apiLogin(email, password) {
+    var base = el.apiBase.value.trim().replace(/\/+$/, "");
+    var body = new URLSearchParams({ email: email, password: password, grant_type: "password" });
+    var resp;
+    try {
+      resp = await fetch(base + "/api/v1/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: body.toString()
+      });
+    } catch (networkErr) {
+      throw { kind: "network", message: "Could not reach the API — check that the server is running." };
+    }
+    if (!resp.ok) {
+      var detail = "Login failed";
+      try { var errBody = await resp.json(); detail = errBody.detail || detail; } catch (e) {}
+      throw { kind: "auth", message: detail };
+    }
+    var data = await resp.json();
+    if (!data.access_token) throw { kind: "auth", message: "Login succeeded but no token was returned." };
+    return data.access_token;
+  }
+
+  async function apiGet(path) {
+    var token = el.apiToken.value.trim();
+    if (!token) throw { kind: "no-token", message: "Not signed in yet." };
+    var resp;
+    try {
+      resp = await fetch(apiUrl(path), {
+        headers: { Authorization: "Bearer " + token }
+      });
+    } catch (networkErr) {
+      throw { kind: "network", message: "Could not reach the API — check the base URL and that the server is running." };
+    }
+    if (resp.status === 401 || resp.status === 403) {
+      throw { kind: "auth", message: "Session expired (" + resp.status + ") — please log in again." };
+    }
+    if (resp.status === 429) {
+      throw { kind: "rate-limit", message: "Rate limited (429) — wait a moment and refresh." };
+    }
+    if (!resp.ok) {
+      var detail = "";
+      try { var body = await resp.json(); detail = body.detail ? " — " + body.detail : ""; } catch (e) {}
+      throw { kind: "http", message: "Request failed (" + resp.status + ")" + detail };
+    }
+    return resp.json();
+  }
+
+  /* ---------------- formatting helpers ---------------- */
+  function compactNumber(n) {
+    if (n === null || n === undefined) return "—";
+    if (Math.abs(n) < 1000) return String(n);
+    if (Math.abs(n) < 1000000) return (n / 1000).toFixed(n % 1000 === 0 ? 0 : 1) + "K";
+    return (n / 1000000).toFixed(1) + "M";
+  }
+  function riskBand(pct) {
+    if (pct < RISK_BANDS.good) return { kind: "good", label: "Low risk" };
+    if (pct < RISK_BANDS.warning) return { kind: "warning", label: "Elevated" };
+    return { kind: "critical", label: "High risk" };
+  }
+  function fmtDate(d) {
+    if (!d) return "—";
+    var dt = new Date(d + "T00:00:00Z");
+    return dt.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+  }
+
+  /* ---------------- tooltip ---------------- */
+  function showTooltip(x, y, titleHtml, bodyHtml) {
+    el.tooltip.innerHTML = '<div class="t-title"></div><div class="t-body"></div>';
+    el.tooltip.querySelector(".t-title").textContent = titleHtml;
+    el.tooltip.querySelector(".t-body").textContent = bodyHtml;
+    el.tooltip.style.left = x + "px";
+    el.tooltip.style.top = y + "px";
+    el.tooltip.classList.add("show");
+  }
+  function hideTooltip() { el.tooltip.classList.remove("show"); }
+
+  /* ---------------- stat tiles ---------------- */
+  function renderTiles(agg) {
+    el.tileTotalValue.textContent = compactNumber(agg.total_learners);
+    el.tileTotalFoot.textContent = agg.run_date ? "as of " + fmtDate(agg.run_date) : " ";
+
+    el.tileCountValue.textContent = compactNumber(agg.at_risk_count);
+    el.tilePctValue.textContent = agg.at_risk_percent.toFixed(1) + "%";
+
+    var band = riskBand(agg.at_risk_percent);
+    [el.tileCountBadge, el.tilePctBadge].forEach(function (badge) {
+      badge.className = "badge " + band.kind;
+      badge.style.display = "inline-flex";
+      badge.textContent = (band.kind === "good" ? "✓ " : band.kind === "warning" ? "⚠ " : "✕ ") + band.label;
+    });
+    el.tileCountFoot.textContent = agg.run_date ? "as of " + fmtDate(agg.run_date) : " ";
+    el.tilePctFoot.textContent = "bands: <" + RISK_BANDS.good + "% good, <" + RISK_BANDS.warning + "% elevated, ≥" + RISK_BANDS.warning + "% high";
+  }
+
+  function renderTilesEmpty() {
+    [el.tileTotalValue, el.tileCountValue, el.tilePctValue].forEach(function (n) { n.textContent = "—"; });
+    [el.tileCountBadge, el.tilePctBadge].forEach(function (b) { b.style.display = "none"; });
+    [el.tileTotalFoot, el.tileCountFoot, el.tilePctFoot].forEach(function (f) { f.textContent = " "; });
+  }
+
+  /* ---------------- bar chart: risk reasons ---------------- */
+  function renderBarChart(agg) {
+    var W = 460, rowH = 46, padTop = 8, padBottom = 8, labelW = 130, chartRight = 60;
+    var maxVal = Math.max(1, agg.total_learners);
+    var innerW = W - labelW - chartRight;
+    var H = REASON_SERIES.length * rowH + padTop + padBottom;
+
+    var svgParts = [];
+    svgParts.push('<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" height="' + H + '" role="img" aria-label="At-risk reasons breakdown">');
+    svgParts.push('<line class="baseline-line" x1="' + labelW + '" y1="' + padTop + '" x2="' + labelW + '" y2="' + (H - padBottom) + '"/>');
+
+    REASON_SERIES.forEach(function (series, i) {
+      var val = agg[series.key] || 0;
+      var y = padTop + i * rowH;
+      var barW = Math.max(2, (val / maxVal) * innerW);
+      var barY = y + rowH / 2 - 12;
+      var cx = labelW + barW;
+
+      svgParts.push('<g class="hbar-row" data-idx="' + i + '" data-label="' + series.label + '" data-value="' + val + '">');
+      svgParts.push(
+        '<rect x="' + labelW + '" y="' + barY + '" width="' + barW + '" height="24" rx="4" ry="4" ' +
+        'fill="var(' + series.varName + ')"></rect>'
+      );
+      svgParts.push(
+        '<rect class="bar-hatch" x="' + labelW + '" y="' + barY + '" width="' + barW + '" height="24" rx="4" ry="4" ' +
+        'fill="url(#hatch-' + i + ')" opacity="0.55"></rect>'
+      );
+      svgParts.push('<rect x="' + labelW + '" y="' + barY + '" width="2" height="24" fill="var(--surface-1)"></rect>');
+      svgParts.push(
+        '<text class="cat-label" x="' + (labelW - 10) + '" y="' + (barY + 16) + '" text-anchor="end">' + series.label + '</text>'
+      );
+      svgParts.push(
+        '<text class="value-label" x="' + (cx + 8) + '" y="' + (barY + 16) + '">' + val.toLocaleString() + '</text>'
+      );
+      svgParts.push('<rect class="hbar-track" x="' + labelW + '" y="' + y + '" width="' + (innerW + chartRight) + '" height="' + rowH + '"></rect>');
+      svgParts.push('</g>');
+    });
+
+    svgParts.push("<defs>");
+    REASON_SERIES.forEach(function (series, i) {
+      svgParts.push(
+        '<pattern id="hatch-' + i + '" width="6" height="6" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">' +
+        '<line x1="0" y1="0" x2="0" y2="6" stroke="var(' + series.hatchVar + ')" stroke-width="2"></line>' +
+        '</pattern>'
+      );
+    });
+    svgParts.push("</defs>");
+    svgParts.push("</svg>");
+
+    el.barSlot.innerHTML =
+      '<div class="legend">' +
+      REASON_SERIES.map(function (s) {
+        return '<span class="item"><span class="swatch" style="background:var(' + s.varName + ')"></span>' + s.label + '</span>';
+      }).join("") +
+      '</div>' + svgParts.join("");
+
+    el.barSlot.querySelectorAll(".hbar-row").forEach(function (row) {
+      row.addEventListener("mousemove", function (evt) {
+        showTooltip(evt.clientX, evt.clientY, row.getAttribute("data-label"), row.getAttribute("data-value") + " learner(s)");
+      });
+      row.addEventListener("mouseleave", hideTooltip);
+    });
+  }
+
+  function renderBarChartEmpty(msg) {
+    el.barSlot.innerHTML = '<div class="empty-state">' + (msg || "No at-risk data for this date yet.") + '</div>';
+  }
+
+  /* ---------------- trend line chart ---------------- */
+  function renderTrendChart(trend) {
+    if (!trend || trend.length === 0) { renderTrendChartEmpty(); return; }
+
+    var W = 640, H = 220, padL = 44, padR = 16, padT = 16, padB = 30;
+    var innerW = W - padL - padR, innerH = H - padT - padB;
+    var values = trend.map(function (d) { return d.at_risk_count; });
+    var maxVal = Math.max(1, Math.max.apply(null, values));
+    var niceMax = niceCeil(maxVal);
+    var n = trend.length;
+
+    function xAt(i) { return padL + (n === 1 ? innerW / 2 : (i / (n - 1)) * innerW); }
+    function yAt(v) { return padT + innerH - (v / niceMax) * innerH; }
+
+    var gridSteps = 4;
+    var gridLines = [];
+    var tickLabels = [];
+    for (var g = 0; g <= gridSteps; g++) {
+      var v = (niceMax / gridSteps) * g;
+      var y = yAt(v);
+      gridLines.push('<line class="grid-line" x1="' + padL + '" y1="' + y + '" x2="' + (W - padR) + '" y2="' + y + '"></line>');
+      tickLabels.push('<text class="axis-label" x="' + (padL - 8) + '" y="' + (y + 4) + '" text-anchor="end">' + Math.round(v).toLocaleString() + '</text>');
+    }
+
+    var points = trend.map(function (d, i) { return xAt(i) + "," + yAt(d.at_risk_count); }).join(" ");
+    var areaPoints = points + " " + xAt(n - 1) + "," + yAt(0) + " " + xAt(0) + "," + yAt(0);
+
+    var dateTickIdx = [];
+    var maxTicks = Math.min(n, 6);
+    for (var t = 0; t < maxTicks; t++) {
+      dateTickIdx.push(Math.round((t / Math.max(1, maxTicks - 1)) * (n - 1)));
+    }
+    dateTickIdx = Array.from(new Set(dateTickIdx));
+
+    var dateLabels = dateTickIdx.map(function (i) {
+      return '<text class="axis-label" x="' + xAt(i) + '" y="' + (H - 6) + '" text-anchor="middle">' + fmtShortDate(trend[i].run_date) + '</text>';
+    }).join("");
+
+    var lastIdx = n - 1;
+    var endDot = '<circle cx="' + xAt(lastIdx) + '" cy="' + yAt(trend[lastIdx].at_risk_count) + '" r="4.5" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="2"></circle>';
+
+    var hitCircles = trend.map(function (d, i) {
+      return '<circle class="trend-hit" data-idx="' + i + '" cx="' + xAt(i) + '" cy="' + yAt(d.at_risk_count) + '" r="10" fill="transparent"></circle>';
+    }).join("");
+
+    var svg =
+      '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" height="' + H + '" role="img" aria-label="At-risk count trend">' +
+      gridLines.join("") +
+      '<line class="baseline-line" x1="' + padL + '" y1="' + (H - padB) + '" x2="' + (W - padR) + '" y2="' + (H - padB) + '"></line>' +
+      tickLabels.join("") +
+      dateLabels +
+      '<polygon points="' + areaPoints + '" fill="var(--series-1)" opacity="0.10"></polygon>' +
+      '<polyline points="' + points + '" fill="none" stroke="var(--series-1)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></polyline>' +
+      endDot +
+      '<text class="value-label" x="' + (xAt(lastIdx) + 8) + '" y="' + (yAt(trend[lastIdx].at_risk_count) - 8) + '">' + trend[lastIdx].at_risk_count + '</text>' +
+      hitCircles +
+      '</svg>';
+
+    el.trendSlot.innerHTML = svg;
+
+    el.trendSlot.querySelectorAll(".trend-hit").forEach(function (c) {
+      c.addEventListener("mousemove", function (evt) {
+        var i = parseInt(c.getAttribute("data-idx"), 10);
+        var d = trend[i];
+        showTooltip(evt.clientX, evt.clientY, fmtDate(d.run_date), d.at_risk_count + " at-risk of " + d.total_learners);
+      });
+      c.addEventListener("mouseleave", hideTooltip);
+    });
+  }
+
+  function renderTrendChartEmpty() {
+    el.trendSlot.innerHTML = '<div class="empty-state">No trend data for this window yet.</div>';
+  }
+
+  function niceCeil(v) {
+    if (v <= 5) return 5;
+    var mag = Math.pow(10, Math.floor(Math.log10(v)));
+    var norm = v / mag;
+    var niceNorm = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10;
+    return niceNorm * mag;
+  }
+  function fmtShortDate(d) {
+    var dt = new Date(d + "T00:00:00Z");
+    return dt.toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
+  }
+
+  /* ---------------- learner table ---------------- */
+  function renderLearnerTable() {
+    var q = el.learnerSearch.value.trim().toLowerCase();
+    var filtered = q ? state.learners.filter(function (id) { return id.toLowerCase().indexOf(q) !== -1; }) : state.learners;
+
+    if (state.learners.length === 0) {
+      el.tableBody.innerHTML = '<tr><td colspan="2"><div class="empty-state">No at-risk learners for this date.</div></td></tr>';
+      el.learnerCountLabel.textContent = "";
+      return;
+    }
+    if (filtered.length === 0) {
+      el.tableBody.innerHTML = '<tr><td colspan="2"><div class="empty-state">No learner IDs match “' + escapeHtml(q) + '”.</div></td></tr>';
+      el.learnerCountLabel.textContent = "0 of " + state.learners.length;
+      return;
+    }
+    el.tableBody.innerHTML = filtered.map(function (id, i) {
+      return "<tr><td>" + (i + 1) + "</td><td>" + escapeHtml(id) + "</td></tr>";
+    }).join("");
+    el.learnerCountLabel.textContent = filtered.length === state.learners.length
+      ? filtered.length + " learner" + (filtered.length === 1 ? "" : "s")
+      : filtered.length + " of " + state.learners.length;
+  }
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function renderTableError(msg) {
+    el.tableBody.innerHTML = '<tr><td colspan="2"><div class="error-state">' + escapeHtml(msg) + '</div></td></tr>';
+    el.learnerCountLabel.textContent = "";
+  }
+  el.learnerSearch.addEventListener("input", renderLearnerTable);
+
+  /* ---------------- loading state ---------------- */
+  function setLoading() {
+    el.barSlot.innerHTML = '<div class="skeleton" style="height:200px;"></div>';
+    el.trendSlot.innerHTML = '<div class="skeleton" style="height:220px;"></div>';
+    el.tableBody.innerHTML = '<tr><td colspan="2"><div class="loading-state">Loading…</div></td></tr>';
+  }
+
+  /* ---------------- main fetch/render cycle ---------------- */
+  // Every exit path (success or failure, for each of the three calls) must
+  // leave bar chart / trend chart / table in a terminal state — never stuck
+  // mid-skeleton — since a failure partway through means later sections
+  // never get their own render call otherwise.
+  async function loadAll() {
+    var runDateParam = el.runDate.value ? "?run_date=" + el.runDate.value : "";
+    var days = el.trendWindow.value;
+
+    hideTooltip();
+
+    if (!(el.cohortId.value || "").trim()) {
+      setConnStatus("err", "Enter a cohort ID above to load data.");
+      renderTilesEmpty();
+      renderBarChartEmpty("Enter a cohort ID to load data.");
+      renderTrendChartEmpty();
+      renderTableError("Enter a cohort ID to load data.");
+      return;
+    }
+    localStorage.setItem(LS_COHORT_KEY, el.cohortId.value.trim());
+
+    setLoading();
+    setConnStatus("idle", "Loading…");
+
+    try {
+      var summary = await apiGet("/summary" + runDateParam);
+      renderTiles(summary.aggregate);
+      if (summary.aggregate.total_learners === 0) {
+        renderBarChartEmpty();
+      } else {
+        renderBarChart(summary.aggregate);
+      }
+    } catch (err) {
+      renderTilesEmpty();
+      renderBarChartEmpty(err.message || "Could not load summary.");
+      renderTrendChartEmpty();
+      renderTableError(err.message || "Could not load data.");
+      handleFetchError(err);
+      return;
+    }
+
+    try {
+      var trendResp = await apiGet("/trend?days=" + days);
+      renderTrendChart(trendResp.trend);
+    } catch (err) {
+      renderTrendChartEmpty();
+      renderTableError(err.message || "Could not load data.");
+      handleFetchError(err);
+      return;
+    }
+
+    try {
+      var learnersResp = await apiGet("/learners" + runDateParam);
+      state.learners = learnersResp.learner_ids || [];
+      renderLearnerTable();
+    } catch (err) {
+      renderTableError(err.message || "Could not load learners.");
+      handleFetchError(err);
+      return;
+    }
+
+    state.connected = true;
+    setConnStatus("ok", "Connected — data refreshed " + new Date().toLocaleTimeString());
+  }
+
+  function handleFetchError(err) {
+    state.connected = false;
+    var msg = (err && err.message) || "Something went wrong.";
+    setConnStatus("err", msg);
+  }
+
+  /* ---------------- wiring ---------------- */
+  // Persist ONLY the resulting token, never the password — the password
+  // lives in the input field for this page load and is never written to
+  // localStorage, a cookie, or anywhere else.
+  function persistToken(token, base) {
+    if (el.remember.checked) {
+      localStorage.setItem(LS_TOKEN_KEY, token);
+      localStorage.setItem(LS_BASE_KEY, base);
+      localStorage.setItem(LS_REMEMBER_KEY, "true");
+    } else {
+      localStorage.removeItem(LS_TOKEN_KEY);
+      localStorage.removeItem(LS_BASE_KEY);
+      localStorage.setItem(LS_REMEMBER_KEY, "false");
+    }
+  }
+
+  el.connectBtn.addEventListener("click", async function () {
+    var email = el.loginEmail.value.trim();
+    var password = el.loginPassword.value;
+    if (!email || !password) {
+      setConnStatus("err", "Enter your email and password.");
+      return;
+    }
+    setConnStatus("idle", "Logging in…");
+    try {
+      var token = await apiLogin(email, password);
+      el.apiToken.value = token;
+      el.loginPassword.value = ""; // never held onto longer than needed
+      persistToken(token, el.apiBase.value.trim());
+      loadAll();
+    } catch (err) {
+      setConnStatus("err", (err && err.message) || "Login failed.");
+    }
+  });
+
+  el.tokenConnectBtn.addEventListener("click", function () {
+    persistToken(el.apiToken.value.trim(), el.apiBase.value.trim());
+    loadAll();
+  });
+
+  el.advancedToggle.addEventListener("click", function (evt) {
+    evt.preventDefault();
+    var showingToken = el.tokenRow.style.display !== "none";
+    el.tokenRow.style.display = showingToken ? "none" : "flex";
+    el.advancedToggle.textContent = showingToken
+      ? "Have a token already instead? Use it directly"
+      : "Back to email/password login";
+  });
+
+  el.clearBtn.addEventListener("click", function () {
+    el.apiToken.value = "";
+    el.loginEmail.value = "";
+    el.loginPassword.value = "";
+    localStorage.removeItem(LS_TOKEN_KEY);
+    localStorage.removeItem(LS_BASE_KEY);
+    setConnStatus("idle", "Signed out.");
+    renderTilesEmpty();
+    renderBarChartEmpty("No data yet.");
+    renderTrendChartEmpty();
+    state.learners = [];
+    renderLearnerTable();
+  });
+  el.refreshBtn.addEventListener("click", loadAll);
+  el.runDate.addEventListener("change", loadAll);
+  el.trendWindow.addEventListener("change", loadAll);
+
+  /* ---------------- init ---------------- */
+  var hadSavedSession = loadSavedConnection();
+  var today = new Date();
+  el.runDate.value = today.toISOString().slice(0, 10);
+
+  if (hadSavedSession && el.apiToken.value.trim()) {
+    loadAll();
+  } else {
+    renderTilesEmpty();
+    renderBarChartEmpty("No data yet.");
+    renderTrendChartEmpty();
+  }
+})();
+</script>
+</body>
+</html>

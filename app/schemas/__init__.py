@@ -1,4 +1,4 @@
-﻿"""Public schema exports for the application package.
+"""Public schema exports for the application package.
 
 This module keeps imports lazy so consumers can load a single schema module
 without pulling in unrelated optional dependencies.
