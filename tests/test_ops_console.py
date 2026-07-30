@@ -16,9 +16,9 @@ from app.dashboards.metrics import (
     get_support_metrics,
     get_support_volume,
 )
-from app.observability.kpis import (
-    escalation_rate as kpi_escalation_rate,
-    support_sessions_total,
+from app.metrics.kpis import (
+    ESCALATION_RATE as kpi_escalation_rate,
+    SUPPORT_SESSIONS as support_sessions_total,
     update_support_metrics,
 )
 from app.services.database import DatabaseService

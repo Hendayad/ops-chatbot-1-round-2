@@ -13,6 +13,7 @@ problems never fall back to general model knowledge.
 """
 
 import os
+import time
 from html import escape
 from collections.abc import Mapping, Sequence
 from typing import Any, Literal, cast
@@ -27,6 +28,7 @@ from pydantic import (
 
 from app.cohorts.scope import is_same_cohort, normalize_cohort, scope_by_cohort
 from app.core.logging import logger
+from app.metrics.kpis import track_first_response_time, track_query_deflected
 from app.prompts.grounding import (
     HONEST_REFUSAL_MESSAGE,
     GroundedAnswer,
@@ -363,7 +365,18 @@ async def grounded_answer(
     """
     question = extract_latest_question(state)
     resolved_cohort = resolve_cohort(state, config, explicit_cohort=cohort)
+
+    started_at = time.monotonic()
     outcome = await generate_grounded_answer(question, cohort=resolved_cohort)
+
+    # M09 instrumentation. A refusal is still a first response, so the histogram
+    # is recorded on every path; only a grounded answer that avoided escalation
+    # counts as deflected. An unresolved cohort is labelled rather than dropped,
+    # so misconfigured deployments stay visible on the dashboard.
+    cohort_label = resolved_cohort or "unknown"
+    track_first_response_time(cohort_label, time.monotonic() - started_at)
+    if outcome.grounded and not outcome.needs_escalation:
+        track_query_deflected(cohort_label)
 
     message = AIMessage(
         content=outcome.answer,

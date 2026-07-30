@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from app.observability.kpis import update_alert_metrics, update_open_issues_metrics, update_support_metrics
+from app.metrics.kpis import update_alert_metrics, update_open_issues_metrics, update_support_metrics
 from app.api.v1.auth import get_current_user
 from app.core.config import settings
 from app.core.limiter import limiter

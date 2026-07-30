@@ -232,3 +232,20 @@ def test_malformed_config_file_is_treated_as_no_cohorts(temp_dir):
     loader = CohortConfigLoader(path)
 
     assert loader.list_cohorts() == []
+
+
+# --- The isolation evaluation must run in CI, not only by hand ---
+
+
+def test_isolation_eval_covers_the_real_retrieval_and_answer_paths():
+    """The eval is a deliverable, so a regression in it must fail the suite."""
+    from evals.cohort_isolation import run_evaluation
+
+    reports = run_evaluation()
+    failed = [report["case"] for report in reports if not report["passed"]]
+
+    assert not failed, f"cross-cohort leakage detected in: {failed}"
+    # Guard against the eval silently shrinking back to pure-function cases.
+    covered = {report["case"] for report in reports}
+    assert any(case.startswith("retriever_") for case in covered)
+    assert any(case.startswith("answer_node_") for case in covered)
