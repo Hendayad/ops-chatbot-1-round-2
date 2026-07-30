@@ -35,6 +35,7 @@ class InMemoryProfileRepository:
     """Small repository used by tests and local development."""
 
     def __init__(self) -> None:
+        """Initialize empty in-memory profile store."""
         self.profiles: dict[str, LearnerProfile] = {}
 
     async def load(self, user_id: str) -> LearnerProfile:
@@ -48,6 +49,7 @@ class ProfileCollector:
     """Collect required profile fields in a predictable, validated sequence."""
 
     def __init__(self, load: ProfileLoader, save: ProfileSaver) -> None:
+        """Initialize collector with profile loading and saving callbacks."""
         self._load = load
         self._save = save
 
@@ -91,3 +93,37 @@ class ProfileCollector:
             prompt=_PROMPTS[missing[0]] if missing else None,
             completed=not missing,
         )
+
+
+def missing_field_detector(profile: LearnerProfile) -> list[ProfileField]:
+    """Detect which profile fields are missing for a learner."""
+    return profile.missing_fields()
+
+
+async def inchat_collection_flow(
+    user_id: str,
+    reply: str | None = None,
+    repository: InMemoryProfileRepository | None = None,
+) -> CollectionTurn:
+    """LangGraph one-field-at-a-time collection flow helper.
+
+    Detects missing fields, asks one naturally at a time, validates answers with
+    Pydantic before saving, and avoids re-asking fields already captured.
+    """
+    repo = repository or InMemoryProfileRepository()
+    collector = ProfileCollector.with_repository(repo)
+    if reply is None:
+        return await collector.start(user_id)
+    return await collector.accept_reply(user_id, reply)
+
+
+__all__ = [
+    "CollectionTurn",
+    "InMemoryProfileRepository",
+    "ProfileCollector",
+    "ProfileLoader",
+    "ProfileSaver",
+    "inchat_collection_flow",
+    "missing_field_detector",
+]
+

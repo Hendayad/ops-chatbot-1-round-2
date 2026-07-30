@@ -50,3 +50,22 @@ def test_profile_schema_has_explicit_collection_order() -> None:
         ProfileField.TIMEZONE,
         ProfileField.COHORT,
     ]
+
+
+def test_missing_field_detector_and_inchat_collection_flow() -> None:
+    from app.profile.collector import inchat_collection_flow, missing_field_detector
+    from app.profile.schema import LearnerProfile
+
+    profile = LearnerProfile(preferred_name="Ahmed")
+    missing = missing_field_detector(profile)
+    assert missing == [ProfileField.TIMEZONE, ProfileField.COHORT]
+
+    repo = InMemoryProfileRepository()
+    turn1 = asyncio.run(inchat_collection_flow("user-10", repository=repo))
+    assert turn1.completed is False
+    assert "name" in (turn1.prompt or "").lower()
+
+    turn2 = asyncio.run(inchat_collection_flow("user-10", reply="Ahmed Magdi", repository=repo))
+    assert turn2.profile.preferred_name == "Ahmed Magdi"
+    assert "timezone" in (turn2.prompt or "").lower()
+

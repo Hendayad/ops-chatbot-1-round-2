@@ -48,3 +48,31 @@ def test_stream_waits_for_validated_answer(monkeypatch: pytest.MonkeyPatch) -> N
 
     chunks = asyncio.run(collect())
     assert "".join(chunks) == "Line one\nLine two"
+
+
+def test_build_qa_graph_compiles() -> None:
+    from app.qa.graph import build_qa_graph
+
+    graph = build_qa_graph()
+    assert graph is not None
+
+
+def test_evaluate_qa_suite_metrics() -> None:
+    from app.qa.graph import QAResult
+    from evals.qa_suite import QA_SUITE, evaluate_qa_suite
+
+    res1 = QAResult(answer="Friday [S1]", grounded=True, needs_escalation=False, sources=[_source()])
+    res2 = QAResult(answer="Honest refusal", grounded=False, needs_escalation=True, escalation_reason="no_relevant_sources")
+    res3 = QAResult(answer="Honest refusal", grounded=False, needs_escalation=True, escalation_reason="invalid_citations")
+
+    cases_and_results = [
+        (QA_SUITE[0], res1),
+        (QA_SUITE[1], res2),
+        (QA_SUITE[2], res3),
+    ]
+
+    metrics = evaluate_qa_suite(cases_and_results)
+    assert metrics["grounding_success_rate"] == 1.0
+    assert metrics["fabricated_answer_rate"] == 0.0
+    assert metrics["total_cases"] == 3
+
