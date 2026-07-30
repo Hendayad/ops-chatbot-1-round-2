@@ -6,8 +6,9 @@ import tracemalloc
 from typing import (
     TYPE_CHECKING,
     Callable,
-    override,
 )
+
+from typing_extensions import override
 
 from asgi_correlation_id import correlation_id
 from fastapi import Request
