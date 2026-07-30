@@ -4,12 +4,12 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from app.observability.kpis import update_alert_metrics, update_open_issues_metrics, update_support_metrics
+from app.metrics.kpis import update_alert_metrics, update_open_issues_metrics, update_support_metrics
 from app.api.v1.auth import get_current_user
 from app.core.config import settings
 from app.core.limiter import limiter
 from app.core.logging import logger
-from app.dashboards.aggregate import aggregate_open_issues, build_alerts
+from app.dashboards.aggregate import aggregate_open_issues, build_alerts, get_connector_issues
 from app.dashboards.metrics import get_support_metrics
 from app.models.user import User
 from app.services.database import DatabaseService
@@ -56,9 +56,7 @@ async def get_dashboard_metrics(
         # need real pagination.
         tickets = await list_open_tickets(limit=_MAX_TICKETS_FOR_DASHBOARD)
         ticket_dicts = [{"status": ticket.status} for ticket in tickets]
-        # M08 (ticketing integration) is not implemented yet, so there are no
-        # external connector issues to include here.
-        open_issues = aggregate_open_issues(ticket_dicts, connector_issues=[])
+        open_issues = aggregate_open_issues(ticket_dicts, connector_issues=get_connector_issues())
         update_open_issues_metrics(open_issues)
 
         alerts = build_alerts(
@@ -72,4 +70,3 @@ async def get_dashboard_metrics(
     except Exception as e:
         logger.exception("dashboard_metrics_failed", user_id=user.id, error=str(e))
         raise HTTPException(status_code=500, detail=str(e))
-

@@ -13,6 +13,7 @@ problems never fall back to general model knowledge.
 """
 
 import os
+import time
 from html import escape
 from collections.abc import Mapping, Sequence
 from typing import Any, Literal, cast
@@ -25,8 +26,10 @@ from pydantic import (
     ValidationError,
 )
 
+from app.cohorts.config import is_servable_cohort
 from app.cohorts.scope import is_same_cohort, normalize_cohort, scope_by_cohort
 from app.core.logging import logger
+from app.metrics.kpis import track_first_response_time, track_query_deflected
 from app.prompts.grounding import (
     HONEST_REFUSAL_MESSAGE,
     GroundedAnswer,
@@ -43,6 +46,7 @@ from app.services.llm import llm_service
 EscalationReason = Literal[
     "missing_question",
     "missing_cohort",
+    "unknown_cohort",
     "no_relevant_sources",
     "retrieval_error",
     "insufficient_context",
@@ -281,6 +285,12 @@ async def generate_grounded_answer(
         return _refusal("missing_question")
     if not normalized_cohort:
         return _refusal("missing_cohort")
+    # A cohort absent from the configuration file has no approved materials of
+    # its own. Answering it would mean serving someone else's, so refuse before
+    # retrieval rather than after.
+    if not is_servable_cohort(normalized_cohort):
+        logger.warning("grounded_answer_unknown_cohort", cohort=normalized_cohort)
+        return _refusal("unknown_cohort")
 
     try:
         retrieved = await retrieve(normalized_question, cohort=normalized_cohort)
@@ -363,7 +373,18 @@ async def grounded_answer(
     """
     question = extract_latest_question(state)
     resolved_cohort = resolve_cohort(state, config, explicit_cohort=cohort)
+
+    started_at = time.monotonic()
     outcome = await generate_grounded_answer(question, cohort=resolved_cohort)
+
+    # M09 instrumentation. A refusal is still a first response, so the histogram
+    # is recorded on every path; only a grounded answer that avoided escalation
+    # counts as deflected. An unresolved cohort is labelled rather than dropped,
+    # so misconfigured deployments stay visible on the dashboard.
+    cohort_label = resolved_cohort or "unknown"
+    track_first_response_time(cohort_label, time.monotonic() - started_at)
+    if outcome.grounded and not outcome.needs_escalation:
+        track_query_deflected(cohort_label)
 
     message = AIMessage(
         content=outcome.answer,
@@ -391,4 +412,3 @@ __all__ = [
     "grounded_answer",
     "resolve_cohort",
 ]
-
