@@ -184,7 +184,7 @@ def test_database_escalation_trigger_returns_persisted_ticket_id(monkeypatch: py
     import types
 
     fake_module = types.ModuleType("app.services.database")
-    fake_module.database_service = FakeDatabaseService()
+    fake_module.__dict__["database_service"] = FakeDatabaseService()
     monkeypatch.setitem(sys.modules, "app.services.database", fake_module)
 
     result = asyncio.run(DatabaseEscalationTrigger().trigger(request))
@@ -543,7 +543,7 @@ def test_ops_ticket_limits_privacy_scoped_summary_lists():
 
 
 def test_ticket_status_update_validates_status_and_rejects_extra_fields():
-    update = ticket_schema.TicketStatusUpdate(status="resolved")
+    update = ticket_schema.TicketStatusUpdate(status=TicketStatus.RESOLVED)
 
     assert update.status is TicketStatus.RESOLVED
 

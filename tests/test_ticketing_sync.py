@@ -60,6 +60,7 @@ class FakeTicketService:
     """In-memory substitute for the internal ticket service."""
 
     def __init__(self, tickets: Sequence[FakeTicket]) -> None:
+        """Initialize the fake service with the provided tickets."""
         self.tickets = {ticket.id: ticket for ticket in tickets}
         self.resolve_calls: list[str] = []
 
@@ -92,6 +93,7 @@ class FlakyConnector(InMemoryTicketingConnector):
     """Connector that temporarily fails its external-ticket lookup."""
 
     def __init__(self, failures: int) -> None:
+        """Initialize the connector with simulated lookup failures."""
         super().__init__()
         self.failures = failures
         self.lookup_attempts = 0
