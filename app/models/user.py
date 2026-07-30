@@ -18,7 +18,12 @@ if TYPE_CHECKING:
     from app.models.session import Session
     from app.models.notification_preference import NotificationPreference
 
+from enum import Enum
 
+
+class UserRole(str, Enum):
+    LEARNER = "learner"
+    ADMIN = "admin"
 class User(BaseModel, table=True):
     """User model for storing user accounts.
 
@@ -44,6 +49,7 @@ class User(BaseModel, table=True):
         description="Ops/admin authorization flag required for Ops-only endpoints (e.g. /atrisk/*).",
     )
     sessions: List["Session"] = Relationship(back_populates="user")
+    role: UserRole = UserRole.LEARNER
     notification_preference: Optional["NotificationPreference"] = Relationship(
         back_populates="user",
         sa_relationship_kwargs={
@@ -65,3 +71,4 @@ class User(BaseModel, table=True):
 
 # Avoid circular imports
 from app.models.session import Session  # noqa: E402
+from app.models.notification_preference import NotificationPreference  # noqa: E402
