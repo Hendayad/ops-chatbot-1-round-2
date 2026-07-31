@@ -5,12 +5,23 @@ from components.styles import page_header, role_badge_html
 
 BASE_URL = "http://127.0.0.1:8000/api/v1"
 
+ROLE_OPTIONS = ["LEARNER", "ADMIN"]
+
+# No endpoint currently returns the list of valid groups/projects, so these
+# are placeholder options — swap in a real fetch once one exists.
+GROUP_OPTIONS = ["Unassigned", "Group A", "Group B", "Group C", "Group D"]
+PROJECT_OPTIONS = ["Unassigned", "CodeBook", "OpsAgent AI", "Capstone Project"]
+
+
+def _index_or_zero(options, value):
+    return options.index(value) if value in options else 0
+
 
 def show_users():
 
     page_header(
         "👥", "User Management",
-        subtitle="View learners and staff, and update their access role.",
+        subtitle="View learners and staff, and update their role, group, and project.",
         eyebrow="Admin",
     )
 
@@ -38,7 +49,9 @@ def show_users():
 
         with st.container(border=True):
 
-            info_col, role_col, action_col = st.columns([3, 2, 1])
+            info_col, role_col, group_col, project_col, action_col = st.columns(
+                [2.4, 1.6, 1.6, 1.8, 1]
+            )
 
             with info_col:
                 st.write(f"**{user['email']}**")
@@ -46,17 +59,35 @@ def show_users():
 
             with role_col:
                 new_role = st.selectbox(
-                    "Change role",
-                    ["LEARNER", "ADMIN"],
-                    index=["LEARNER", "ADMIN"].index(user["role"])
-                    if user["role"] in ("LEARNER", "ADMIN")
-                    else 0,
-                    key=user["id"],
-                    label_visibility="collapsed",
+                    "Role",
+                    ROLE_OPTIONS,
+                    index=_index_or_zero(ROLE_OPTIONS, user.get("role")),
+                    key=f"role_{user['id']}",
+                )
+
+            with group_col:
+                new_group = st.selectbox(
+                    "Group",
+                    GROUP_OPTIONS,
+                    index=_index_or_zero(GROUP_OPTIONS, user.get("group")),
+                    key=f"group_{user['id']}",
+                )
+
+            with project_col:
+                new_project = st.selectbox(
+                    "Project",
+                    PROJECT_OPTIONS,
+                    index=_index_or_zero(PROJECT_OPTIONS, user.get("project")),
+                    key=f"project_{user['id']}",
                 )
 
             with action_col:
-                unchanged = new_role == user["role"]
+                unchanged = (
+                    new_role == user.get("role")
+                    and new_group == user.get("group", "Unassigned")
+                    and new_project == user.get("project", "Unassigned")
+                )
+                st.write("")
                 if st.button(
                     "Update",
                     key=f"btn_{user['id']}",
@@ -64,18 +95,22 @@ def show_users():
                     disabled=unchanged,
                 ):
                     try:
-                        with st.spinner("Updating role..."):
+                        with st.spinner("Updating user..."):
                             patch_response = requests.patch(
                                 f"{BASE_URL}/users/{user['id']}/role",
-                                json={"role": new_role},
+                                json={
+                                    "role": new_role,
+                                    "group": new_group,
+                                    "project": new_project,
+                                },
                                 headers={
                                     "Authorization": f"Bearer {st.session_state.token}"
                                 },
                             )
                         if patch_response.status_code == 200:
-                            st.success(f"Updated {user['email']} to {new_role}.")
+                            st.success(f"Updated {user['email']}.")
                             st.rerun()
                         else:
-                            st.error("Couldn't update the role. Please try again.")
+                            st.error("Couldn't update this user. Please try again.")
                     except requests.RequestException as e:
                         st.error(f"Couldn't reach the backend: {e}")

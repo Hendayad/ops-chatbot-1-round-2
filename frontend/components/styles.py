@@ -18,7 +18,6 @@ BADGE_STYLES = {
 
 ROLE_BADGE = {
     "learner":      "info",
-    "program_lead": "success",
     "admin":        "neutral",
 }
 
@@ -27,7 +26,9 @@ def load_css():
     st.markdown(
         """
         <style>
+
         @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
 
         :root{
             --bg:#F4F6FA;
@@ -35,323 +36,433 @@ def load_css():
             --ink:#16213A;
             --ink-soft:#5A6B87;
             --border:#E2E7F0;
+
             --primary:#2E4374;
-            --primary-hover:#24355C;
+
             --blue:#2A63E4;
             --blue-hover:#1F4FC4;
             --blue-soft:rgba(42,99,228,.10);
+
             --accent:#2F9E77;
+
             --radius-lg:14px;
             --radius-md:10px;
+
             --shadow-sm:0 1px 2px rgba(16,24,40,.05);
-            --shadow-md:0 4px 16px rgba(16,24,40,.07);
         }
+
+
+        /* ================= GENERAL ================= */
 
         html, body, [class*="css"]{
             font-family:'Inter', sans-serif;
             color:var(--ink);
         }
 
-        h1, h2, h3, h4 {
-            font-family:'Space Grotesk', sans-serif !important;
-            letter-spacing:-0.01em;
+
+        h1,h2,h3,h4{
+            font-family:'Space Grotesk',sans-serif !important;
         }
+
 
         .main{
             background-color:var(--bg);
         }
 
-        /* No sidebar in this app — hide it and its collapse control entirely */
-        section[data-testid="stSidebar"],
-        [data-testid="collapsedControl"]{
+
+
+        /* ================= SIDEBAR ================= */
+
+        [data-testid="stSidebarNav"],
+        [data-testid="stSidebarNavSeparator"]{
             display:none !important;
         }
 
-        /* ---- Page header block ---- */
-        .oa-eyebrow{
-            font-family:'JetBrains Mono', monospace;
-            font-size:11px;
-            font-weight:500;
-            letter-spacing:.14em;
-            text-transform:uppercase;
-            color:var(--ink-soft);
-            margin-bottom:2px;
+        /* Explicit background so an empty sidebar (e.g. before login,
+           when show_sidebar() is never called) still matches the app
+           instead of falling back to Streamlit's default color and
+           showing a visible seam next to the main content. */
+        section[data-testid="stSidebar"]{
+            background:var(--bg) !important;
+            border-right:1px solid var(--border);
         }
+
+
+
+        /* ================= PAGE HEADER ================= */
+
+        .oa-eyebrow{
+            font-family:'JetBrains Mono',monospace;
+            font-size:11px;
+            letter-spacing:.14em;
+            color:var(--ink-soft);
+            text-transform:uppercase;
+            margin-bottom:3px;
+        }
+
+
         .oa-page-title{
-            font-family:'Space Grotesk', sans-serif;
+            font-family:'Space Grotesk',sans-serif;
             font-size:30px;
             font-weight:700;
             color:var(--ink);
-            margin:0 0 2px 0;
-            line-height:1.2;
+            margin-bottom:5px;
         }
+
+
         .oa-page-subtitle{
             color:var(--ink-soft);
-            font-size:14.5px;
-            margin-bottom:6px;
+            font-size:14px;
         }
+
+
         .oa-header-rule{
             border:none;
             border-top:1px solid var(--border);
-            margin:14px 0 22px 0;
+            margin:14px 0 22px;
         }
 
-        /* ---- Badges (status/priority/role pills) ---- */
-        .oa-badge{
-            display:inline-flex;
-            align-items:center;
-            gap:6px;
-            padding:3px 11px;
-            border-radius:999px;
-            font-size:12.5px;
-            font-weight:600;
-            line-height:1.6;
-        }
-        .oa-dot{
-            width:6px;height:6px;border-radius:50%;background:currentColor;
-        }
 
-        /* ---- Buttons ---- */
-        .stButton>button{
+
+        /* ================= BUTTONS ================= */
+
+        .stButton > button{
+
             width:100%;
-            border-radius:var(--radius-md);
+            height:44px;
+
             background:var(--blue);
             color:white;
-            height:44px;
+
             border:none;
-            font-size:15px;
+            border-radius:var(--radius-md);
+
             font-weight:600;
-            transition:background .15s ease;
+            font-size:15px;
+
         }
-        .stButton>button:hover{
+
+
+        .stButton > button:hover{
+
             background:var(--blue-hover);
             color:white;
-        }
-        .stButton>button:disabled{
-            background:#B9C2D6;
-            color:#F4F6FA;
+
         }
 
-        /* ---- Inputs ---- */
-        .stTextInput>div>div>input, .stSelectbox>div>div, .stTextArea textarea{
+
+
+        /* ================= INPUTS ================= */
+
+        .stTextInput input,
+        .stTextArea textarea,
+        .stSelectbox div{
+
             border-radius:var(--radius-md) !important;
             border:1px solid var(--border) !important;
+
         }
 
-        /* ---- Metric cards ---- */
+
+
+        /* ================= CARDS ================= */
+
         div[data-testid="stMetric"]{
-            background:var(--surface);
+
+            background:white;
+
             border:1px solid var(--border);
+
             border-radius:var(--radius-lg);
-            padding:18px 20px;
+
+            padding:18px;
+
             box-shadow:var(--shadow-sm);
-        }
-        div[data-testid="stMetricLabel"]{
-            font-size:13px;
-            color:var(--ink-soft);
-            font-weight:500;
+
         }
 
-        /* ---- Generic surface card, used via st.container(border=True) ---- */
+
+
         div[data-testid="stVerticalBlockBorderWrapper"]{
+
+            background:white;
+
+            border:1px solid var(--border) !important;
+
             border-radius:var(--radius-lg) !important;
-            border:1px solid var(--border) !important;
-            background:var(--surface);
-            box-shadow:var(--shadow-sm);
+
         }
 
-        /* ---- Dataframes / tables ---- */
+
+
+        /* ================= TABLE ================= */
+
         div[data-testid="stDataFrame"]{
+
+            border:1px solid var(--border);
+
             border-radius:var(--radius-md);
+
             overflow:hidden;
-            border:1px solid var(--border);
+
         }
 
-        /* ---- Chat ---- */
-        div[data-testid="stChatMessage"]{
-            border-radius:16px;
-            padding:16px 18px;
-            margin-bottom:12px;
-            background:var(--surface);
-            border:1px solid var(--border);
-            box-shadow:var(--shadow-sm);
-        }
-        div[data-testid="stChatMessageAvatarUser"]{
-            background:var(--primary);
-        }
-        div[data-testid="stChatMessageAvatarAssistant"]{
-            background:var(--accent);
-        }
 
-        /* ==================================================================
-           TOP NAVBAR — light, minimal, edge-to-edge bar (not a floating
-           card): thin bottom border, a single slim brand-colored top rule
-           as the one restrained signature touch, underline-style nav
-           instead of pill buttons.
-           ================================================================== */
-        div.st-key-oa_topbar{
-            background:var(--surface);
-            border-radius:0;
-            border-top:2px solid var(--blue);
-            border-bottom:1px solid var(--border);
-            padding:14px 6px 12px 6px;
-            margin:-1px 0 28px 0;
-            position:sticky;
-            top:0;
-            z-index:999;
-        }
 
-        /* ---- Brand ---- */
-        div.st-key-oa_topbar .oa-brand{
-            display:flex;
-            align-items:center;
-            gap:10px;
-        }
-        div.st-key-oa_topbar .oa-brand-mark{
-            width:30px;
-            height:30px;
-            min-width:30px;
-            border-radius:8px;
-            background:var(--blue-soft);
-            color:var(--blue);
-            display:flex;
-            align-items:center;
-            justify-content:center;
-            font-family:'Space Grotesk', sans-serif;
-            font-weight:700;
-            font-size:13px;
-            letter-spacing:.02em;
-        }
-        div.st-key-oa_topbar .oa-brand-title{
-            font-family:'Space Grotesk', sans-serif;
-            font-size:17px;
-            font-weight:700;
-            color:var(--ink);
-            line-height:1.2;
-        }
+        /* ================= BADGES ================= */
 
-        /* ---- User chip (fallback path, no st.popover available) ---- */
-        div.st-key-oa_topbar .oa-user-chip{
-            display:flex;
+        .oa-badge{
+
+            display:inline-flex;
+
             align-items:center;
-            gap:10px;
-        }
-        div.st-key-oa_topbar .oa-avatar{
-            width:30px;
-            height:30px;
-            min-width:30px;
-            border-radius:50%;
-            background:var(--blue);
-            color:#FFFFFF;
-            display:flex;
-            align-items:center;
-            justify-content:center;
-            font-family:'Space Grotesk', sans-serif;
-            font-weight:700;
-            font-size:13px;
-        }
-        div.st-key-oa_topbar .oa-user-name{
-            font-size:13.5px;
+
+            gap:6px;
+
+            padding:3px 11px;
+
+            border-radius:999px;
+
+            font-size:12px;
+
             font-weight:600;
-            color:var(--ink);
-            line-height:1.3;
+
         }
 
-        /* ---- User menu button (st.popover trigger) ---- */
-        div.st-key-oa_topbar div[data-testid="stPopover"] > div > button{
-            background:transparent !important;
-            border:1px solid var(--border) !important;
-            color:var(--ink) !important;
-            font-weight:600 !important;
-            font-size:13px !important;
-            height:38px;
-            border-radius:999px !important;
-            transition:background .15s ease, border-color .15s ease;
-        }
-        div.st-key-oa_topbar div[data-testid="stPopover"] > div > button:hover{
-            background:var(--bg) !important;
-            border-color:#C7CEDC !important;
+
+        .oa-dot{
+
+            width:6px;
+            height:6px;
+
+            border-radius:50%;
+
+            background:currentColor;
+
         }
 
-        /* ---- Pill navigation → restyled as understated underline tabs ----
-           Streamlit's segmented control / radio ships with its own accent
-           (a red/orange) and a pill shape. These overrides strip that back
-           to plain text with a bottom-border indicator, across the handful
-           of DOM shapes different Streamlit versions use. */
-        div.st-key-oa_topbar div[data-testid="stSegmentedControl"],
-        div.st-key-oa_topbar div[role="radiogroup"]{
-            display:flex;
-            justify-content:center;
-            gap:4px;
+
+
+        /* ================= TOP NAVBAR ================= */
+
+        div.st-key-oa_topbar{
+
+            background:white;
+
+            border-top:2px solid var(--blue);
+
             border-bottom:1px solid var(--border);
-        }
-        div.st-key-oa_topbar div[data-testid="stSegmentedControl"] label,
-        div.st-key-oa_topbar div[data-testid="stSegmentedControl"] button,
-        div.st-key-oa_topbar div[role="radiogroup"] label{
-            border-radius:0 !important;
-            font-weight:600 !important;
-            font-size:13.5px !important;
-            color:var(--ink-soft) !important;
-            background:transparent !important;
-            border:none !important;
-            border-bottom:2px solid transparent !important;
-            padding:8px 14px 9px 14px !important;
-            margin-bottom:-1px;
-            transition:color .15s ease, border-color .15s ease;
-        }
-        div.st-key-oa_topbar div[data-testid="stSegmentedControl"] label:hover,
-        div.st-key-oa_topbar div[role="radiogroup"] label:hover{
-            color:var(--blue) !important;
-            border-bottom-color:#B7C9F5 !important;
-        }
-        div.st-key-oa_topbar div[data-testid="stSegmentedControl"] label:focus-within,
-        div.st-key-oa_topbar div[role="radiogroup"] label:focus-within{
-            outline:2px solid var(--blue);
-            outline-offset:2px;
-        }
-        div.st-key-oa_topbar div[data-testid="stSegmentedControl"] label[aria-checked="true"],
-        div.st-key-oa_topbar div[data-testid="stSegmentedControl"] label[data-selected="true"],
-        div.st-key-oa_topbar div[data-testid="stSegmentedControl"] button[aria-checked="true"],
-        div.st-key-oa_topbar div[role="radiogroup"] label[data-checked="true"],
-        div.st-key-oa_topbar div[role="radiogroup"] input:checked + div{
-            color:var(--blue) !important;
-            border-bottom-color:var(--blue) !important;
-        }
-        /* Hide the little circular radio dot in the fallback control — the
-           underline alone communicates selection */
-        div.st-key-oa_topbar div[role="radiogroup"] label > div:first-child{
-            display:none;
+
+            padding:14px 6px 12px;
+
+            margin:-1px 0 28px;
+
         }
 
-        /* Chat input stays clear of page content */
-        .stChatInput{
-            position:fixed;
-            bottom:20px;
+
+
+        /* Brand */
+
+        .oa-brand{
+
+            display:flex;
+
+            align-items:center;
+
+            gap:10px;
+
         }
-        /* Inline Flex Alignment Fix */
-        .oa-brand, .oa-user-chip, .oa-user-name, div[data-testid="stPopover"] {
-            display: inline-flex !important;
+
+
+        .oa-brand-mark{
+
+            width:30px;
+            height:30px;
+
+            border-radius:8px;
+
+            background:var(--blue-soft);
+
+            color:var(--blue);
+
+            display:flex;
+
+            justify-content:center;
+
+            align-items:center;
+
+            font-weight:700;
+
+        }
+
+
+        .oa-brand-title{
+
+            font-size:17px;
+
+            font-weight:700;
+
+        }
+
+
+
+        /* User */
+
+        .oa-user-chip{
+
+            display:flex;
+
+            align-items:center;
+
+            gap:10px;
+
+        }
+
+
+        .oa-avatar{
+
+            width:30px;
+            height:30px;
+
+            border-radius:50%;
+
+            background:var(--blue);
+
+            color:white;
+
+            display:flex;
+
+            justify-content:center;
+
+            align-items:center;
+
+            font-weight:700;
+
+        }
+
+
+
+
+        /* =====================================================
+        STREAMLIT SIDEBAR RADIO NAV FIX
+        REMOVE RED SELECT DOT
+        ===================================================== */
+
+
+        /* Hide radio input */      
+        section[data-testid="stSidebar"] input[type="radio"] {
+            display: none !important;
+        }
+
+
+        /* Remove the radio circle container */
+        section[data-testid="stSidebar"] div[role="radiogroup"] label > div:first-child {
+            display: none !important;
+        }
+
+
+        /* Remove BaseWeb radio indicator */
+        section[data-testid="stSidebar"] div[role="radiogroup"] [data-baseweb="radio"] {
+            display: none !important;
+        }
+
+
+        /* Remove SVG circles/icons */
+        section[data-testid="stSidebar"] div[role="radiogroup"] svg {
+            display: none !important;
+        }
+
+
+        /* Remove generated dots */
+        section[data-testid="stSidebar"] div[role="radiogroup"] label::before,
+        section[data-testid="stSidebar"] div[role="radiogroup"] label::after {
+
+            content: "" !important;
+
+            display: none !important;
+
+        }
+
+
+        /* Radio group layout */
+        section[data-testid="stSidebar"] div[role="radiogroup"] {
+
+            display: flex !important;
+
+            flex-direction: column !important;
+
+            gap: 5px !important;
+
+        }
+
+
+        /* Navigation item */
+        section[data-testid="stSidebar"] div[role="radiogroup"] label {
+
+            display: flex !important;
+
             align-items: center !important;
-            vertical-align: middle !important;
+
+
+            background: transparent !important;
+
+            color: var(--ink-soft) !important;
+
+
+            padding: 8px 14px !important;
+
+
+            font-size: 13.5px !important;
+
+            font-weight: 600 !important;
+
+
+            border-radius: var(--radius-md) !important;
+
+
+            cursor: pointer !important;
+
         }
 
-        /* Ensure dropdown arrows and sub-elements don't drop down */
-        div.st-key-oa_topbar span, 
-        div.st-key-oa_topbar button, 
-        div.st-key-oa_topbar div {
-            vertical-align: middle !important;
+
+        /* Hover */
+        section[data-testid="stSidebar"] div[role="radiogroup"] label:hover {
+
+            background: var(--blue-soft) !important;
+
+            color: var(--blue) !important;
+
         }
 
-        /* Normalizes line height to prevent baseline drop */
-        .oa-user-name, .oa-brand-title {
-            line-height: 1 !important;
-            margin: 0 !important;
+
+        /* Selected page */
+        section[data-testid="stSidebar"] div[role="radiogroup"] label[aria-checked="true"] {
+
+            background: var(--blue-soft) !important;
+
+            color: var(--blue) !important;
+
+            font-weight: 700 !important;
+
         }
+
+
+        /* Chat */
+
+        .stChatInput{
+
+            position:fixed;
+
+            bottom:20px;
+
+        }
+
+
         </style>
         """,
+
         unsafe_allow_html=True,
     )
-
 
 def page_header(icon: str, title: str, subtitle: str = "", eyebrow: str = ""):
     """Consistent header used at the top of every page."""
