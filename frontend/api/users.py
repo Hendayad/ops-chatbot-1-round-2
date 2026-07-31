@@ -40,19 +40,3 @@ def update_role(
     response.raise_for_status()
 
     return response.json()
-def get_current_user(token):
-
-    response = requests.get(
-        f"{BASE_URL}/users/me",
-        headers={
-            "Authorization": f"Bearer {token}"
-        },
-    )
-
-    print("TOKEN:", token)
-    print("STATUS:", response.status_code)
-    print("BODY:", response.text)
-
-    response.raise_for_status()
-
-    return response.json()
