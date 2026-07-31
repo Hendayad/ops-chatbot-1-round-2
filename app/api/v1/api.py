@@ -15,6 +15,7 @@ from app.api.v1.chatbot import router as chatbot_router
 from app.api.v1.tickets import router as tickets_router
 from app.core.logging import logger
 from app.kb.admin_api import router as kb_admin_router
+from app.api.v1.notifications import router as notifications_router
 from app.api.v1 import users
 
 api_router = APIRouter()
@@ -39,6 +40,11 @@ api_router.include_router(
     reminders_router,
     prefix="/reminders",
     tags=["Reminders"],
+)
+api_router.include_router(
+    notifications_router,
+    prefix="/notifications",
+    tags=["Notifications"],
 )
 
 
