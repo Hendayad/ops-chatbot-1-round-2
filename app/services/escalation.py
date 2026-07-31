@@ -5,7 +5,6 @@ from typing import Protocol
 from app.notifications.escalation_notifications import notify_learner_of_escalation, notify_ops_of_escalation
 from app.services.database import database_service as db_service_for_session
 from app.core.config import settings
-from app.services.notification_service import create_notification
 
 try:
     from app.core.logging import logger
@@ -93,32 +92,8 @@ class DatabaseEscalationTrigger:
 
         try:
             with db_service_for_session.get_session_maker() as session:
-                    # Learner notification (appears in learner bell)
-                create_notification(
-                    session=session,
-                    user_id=ticket.user_id,
-                    title="Escalation Submitted",
-                    message=f"Your escalation ticket #{ticket.id} has been created successfully.",
-                    category="ticket",
-                )
-
-                # Admin notifications (appear in admin bells)
-                admin_ids = database_service.get_admin_ids(session)
-
-                for admin_id in admin_ids:
-                    create_notification(
-                        session=session,
-                        user_id=admin_id,
-                        title="New Escalation",
-                        message=f"A new escalation ticket #{ticket.id} requires review.",
-                        category="ticket",
-                    )
-
                 notify_learner_of_escalation(session, ticket)
-
-
                 notify_ops_of_escalation(ticket, ops_email=settings.OPS_NOTIFICATION_EMAIL)
-
         except Exception:
             logger.exception("escalation_notification_failed", ticket_id=getattr(ticket, "id", None))
 

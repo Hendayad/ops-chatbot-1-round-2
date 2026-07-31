@@ -6,7 +6,6 @@ PAGE_ICONS = {
     "Reminders": "🔔",
     "Analytics": "📈",
     "Settings": "⚙️",
-    "Guide": "📘",
     "Users": "👥",
 }
 
@@ -23,7 +22,6 @@ ROLE_PAGES = {
         "Analytics",
         "Knowledge Base",
         "Users",
-        "Guide",
         "Settings",
     ],
 }

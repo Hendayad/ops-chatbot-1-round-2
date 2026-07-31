@@ -1,13 +1,8 @@
 import streamlit as st
 
 from api.auth import login
-from api.users import get_current_user
-from api.notifications import (
-    get_notifications,
-    mark_as_read,
-)
 
-from components.sidebar import show_sidebar
+from components.navbar import render_top_navbar
 from components.styles import load_css
 
 from pages.dashboard import show_dashboard
@@ -19,7 +14,6 @@ from pages.reminders import show_reminders
 from pages.analytics import show_analytics
 from pages.settings import show_settings
 from pages.register import show_register
-from pages.guide import show_guide
 
 # --------------------------------------------------
 # Page Configuration
@@ -31,19 +25,6 @@ st.set_page_config(
     layout="wide",
 )
 
-# Hide Streamlit's automatic page navigation
-st.markdown("""
-<style>
-[data-testid="stSidebarNav"]{
-    display:none;
-}
-
-[data-testid="stSidebarNavSeparator"]{
-    display:none;
-}
-</style>
-""", unsafe_allow_html=True)
-
 load_css()
 
 # --------------------------------------------------
@@ -54,13 +35,13 @@ if "token" not in st.session_state:
     st.session_state.token = None
 
 if "user" not in st.session_state:
-    st.session_state.user = None
+    st.session_state.user = {}
 
 if "role" not in st.session_state:
     st.session_state.role = ""
 
 # --------------------------------------------------
-# Login / Register
+# Login / Register Page
 # --------------------------------------------------
 
 if st.session_state.token is None:
@@ -76,10 +57,9 @@ if st.session_state.token is None:
             """
             <div style="text-align:center; margin-top:32px; margin-bottom:8px;">
                 <div style="font-size:40px;">🤖</div>
-                <div style="font-size:26px;font-weight:700;">
-                    OpsAgent AI
-                </div>
-                <div style="color:#5A6B87;font-size:14px;">
+                <div style="font-family:'Space Grotesk',sans-serif; font-size:26px;
+                            font-weight:700;">OpsAgent AI</div>
+                <div style="color:#5A6B87; font-size:14px;">
                     Operations Support Portal
                 </div>
             </div>
@@ -109,8 +89,7 @@ if st.session_state.token is None:
                     password = st.text_input("Password", type="password")
 
                     submitted = st.form_submit_button(
-                        "Login",
-                        use_container_width=True,
+                        "Login", use_container_width=True
                     )
 
                 if submitted:
@@ -125,11 +104,7 @@ if st.session_state.token is None:
                                 result = login(email, password)
 
                             st.session_state.token = result.get("access_token")
-                            if st.session_state.token:
-                                st.session_state.user = get_current_user(
-                                    st.session_state.token
-                                )
-
+                            st.session_state.user = result.get("user", {})
                             st.session_state.role = result.get("role", "")
 
                             st.success("Login successful!")
@@ -140,10 +115,7 @@ if st.session_state.token is None:
 
             st.write("")
 
-            if st.button(
-                "Create new account",
-                use_container_width=True,
-            ):
+            if st.button("Create new account", use_container_width=True):
                 st.session_state.show_register = True
                 st.rerun()
 
@@ -153,83 +125,7 @@ if st.session_state.token is None:
 
 else:
 
-    notifications = get_notifications(st.session_state.token)
-
-    # ---------------------------------------
-    # Notification count
-    # ---------------------------------------
-
-    if st.session_state.role == "learner":
-        unread = sum(
-            not n["is_read"]
-            for n in notifications
-        )
-    else:
-        unread = len(notifications)
-
-    notification_count = unread
-    overdue_ticket_count = unread if st.session_state.role == "admin" else 0
-
-    # ---------------------------------------
-    # Notification bell
-    # ---------------------------------------
-
-    top_left, top_right = st.columns([12, 1])
-
-    with top_right:
-
-        bell = "🔔"
-
-        if unread:
-            bell = f"🔔 {unread}"
-
-        with st.popover(bell):
-
-            st.subheader("Notifications")
-
-            if not notifications:
-                st.info("No notifications.")
-
-            else:
-
-                for notification in notifications:
-
-                    st.markdown(f"**{notification['title']}**")
-                    st.caption(notification["message"])
-
-                    # Learners can mark notifications as read
-                    if (
-                        st.session_state.role == "learner"
-                        and not notification["is_read"]
-                    ):
-
-                        if st.button(
-                            "✓ Mark as read",
-                            key=f"read_{notification['id']}",
-                        ):
-
-                            mark_as_read(
-                                st.session_state.token,
-                                notification["id"],
-                            )
-
-                            st.rerun()
-
-                    st.divider()
-
-    # ---------------------------------------
-    # Sidebar
-    # ---------------------------------------
-
-    page = show_sidebar(
-        role=st.session_state.role,
-        notification_count=notification_count,
-        overdue_ticket_count=overdue_ticket_count,
-    )
-
-    # ---------------------------------------
-    # Pages
-    # ---------------------------------------
+    page = render_top_navbar()
 
     if page == "Dashboard":
         show_dashboard()
@@ -255,12 +151,8 @@ else:
     elif page == "Users":
         show_users()
 
-    elif page == "Guide":
-        show_guide()
-
-
     elif page is None:
         pass
 
     else:
-        st.error(f"Unknown page: {page}")
+        st.error("Unknown page selected.")
