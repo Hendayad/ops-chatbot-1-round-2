@@ -77,7 +77,7 @@ def show_settings():
 
         with st.container(border=True):
 
-            st.subheader("🔔 Notification Preferences")
+            st.subheader("⏰ Reminder Preferences")
 
             # Show a save result from the *previous* run, if any. This has
             # to happen before st.rerun() is called below, not after — a

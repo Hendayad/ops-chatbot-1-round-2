@@ -107,6 +107,7 @@ async def update_user_role(
                 )
 
         user.role = UserRole(new_role)
+        user.is_ops = (user.role == UserRole.ADMIN)
 
         session.add(user)
         session.commit()

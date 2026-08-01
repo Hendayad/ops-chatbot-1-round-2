@@ -49,24 +49,26 @@ def show_tickets():
             ]
         ]
 
-        with st.container(border=True):
+        st.write("### Tickets")
+        st.caption("Click a ticket to view its details.")
 
-            st.dataframe(
-                display,
-                use_container_width=True,
-                hide_index=True,
-            )
-
-        st.write("")
-
-        selected = st.selectbox(
-            "View ticket",
-            df["ticket_id"],
+        event = st.dataframe(
+            display,
+            use_container_width=True,
+            hide_index=True,
+            on_select="rerun",
+            selection_mode="single-row",
         )
 
-        ticket = df[
-            df.ticket_id == selected
-        ].iloc[0]
+        selected_rows = event.selection.rows
+
+        if not selected_rows:
+            st.info("Select a ticket from the table above.")
+            return
+
+        ticket = df.iloc[selected_rows[0]]
+
+        st.write("")
 
         with st.container(border=True):
 
@@ -111,9 +113,7 @@ def show_tickets():
                     use_container_width=True,
                 ):
 
-                    with st.spinner(
-                        "Resolving ticket..."
-                    ):
+                    with st.spinner("Resolving ticket..."):
 
                         resolve_ticket(
                             st.session_state.token,
@@ -128,7 +128,9 @@ def show_tickets():
 
             else:
 
-                st.success("This ticket has already been resolved.")
+                st.success(
+                    "This ticket has already been resolved."
+                )
 
     except Exception as e:
 
