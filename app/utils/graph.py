@@ -1,7 +1,7 @@
 """This file contains the graph utilities for the application."""
 
 import tiktoken
-from typing import Any, Union, cast
+from typing import Any, Union
 from langchain_core.messages import BaseMessage
 from langchain_core.messages import trim_messages as _trim_messages
 
@@ -45,13 +45,20 @@ def _count_tokens_tiktoken(messages: list[Any]) -> int:
 def dump_messages(messages: list[Message]) -> list[dict[str, Any]]:
     """Dump the messages to a list of dictionaries.
 
+    Messages coming straight from the request body are Message pydantic
+    objects, but messages read back out of LangGraph state have already
+    been dumped to plain dicts on a previous pass (see get_response /
+    get_stream_response, which store dump_messages(...) output directly
+    into graph state). Handle both shapes so this is safe to call at
+    either point in the pipeline.
+
     Args:
         messages (list[Message]): The messages to dump.
 
     Returns:
         list[dict]: The dumped messages.
     """
-    return [message.model_dump() for message in messages]
+    return [message.model_dump() if hasattr(message, "model_dump") else message for message in messages]
 
 
 def extract_text_content(content: Union[str, list[Any]]) -> str:
@@ -106,6 +113,21 @@ def process_llm_response(response: BaseMessage) -> BaseMessage:
     return response
 
 
+_BASE_MESSAGE_TYPE_TO_ROLE = {"human": "user", "ai": "assistant", "system": "system"}
+
+
+def _message_to_mapping(msg: Union[dict, BaseMessage]) -> dict[str, Any]:
+    """Normalize a trimmed message (dict or BaseMessage) to a role/content mapping.
+
+    langchain_core's trim_messages() returns BaseMessage instances regardless
+    of the input shape, so downstream code that builds our own Message schema
+    needs a mapping either way.
+    """
+    if isinstance(msg, dict):
+        return msg
+    return {"role": _BASE_MESSAGE_TYPE_TO_ROLE.get(msg.type, "user"), "content": msg.content}
+
+
 def prepare_messages(messages: list[Message], system_prompt: str) -> list[Message]:
     """Prepare the messages for the LLM.
 
@@ -117,8 +139,12 @@ def prepare_messages(messages: list[Message], system_prompt: str) -> list[Messag
         list[Message]: The prepared messages.
     """
     try:
-        # LangChain's trim_messages expects BaseMessage or dicts and returns a list of the same type.
-        # We explicitly cast the output to list[dict] to match the input format we pass in.
+        # LangChain's trim_messages internally converts its input to BaseMessage
+        # objects (HumanMessage/AIMessage/SystemMessage) and returns that same
+        # BaseMessage representation -- NOT dicts matching whatever shape we
+        # passed in, despite what the old comment here claimed. So we can't
+        # just cast-and-unpack the result; each item has to be normalized to
+        # a {"role", "content"} mapping before it can build a Message.
         raw_trimmed = _trim_messages(
             dump_messages(messages),
             strategy="last",
@@ -128,8 +154,7 @@ def prepare_messages(messages: list[Message], system_prompt: str) -> list[Messag
             include_system=False,
             allow_partial=False,
         )
-        trimmed_dicts = cast(list[dict[str, Any]], raw_trimmed)
-        trimmed_messages = [Message(**msg) for msg in trimmed_dicts]
+        trimmed_messages = [Message(**_message_to_mapping(msg)) for msg in raw_trimmed]
     except ValueError as e:
         # Handle unrecognized content blocks (e.g., reasoning blocks from GPT-5)
         if "Unrecognized content block type" in str(e):

@@ -100,6 +100,34 @@ async def get_current_user(
         )
 
 
+def get_current_ops_user(user: User = Depends(get_current_user)) -> User:
+    """Require the authenticated user to be Ops-authorized (User.is_ops).
+
+    Plain sync function (no I/O of its own -- get_current_user already did
+    the DB lookup), so it's directly unit-testable without a DB or HTTP
+    client: construct a User and call this with it. Use as the auth
+    dependency on Ops-only endpoints (e.g. app.api.v1.atrisk) instead of
+    the plain get_current_user, which only proves "some authenticated
+    account", not "an Ops/admin account".
+
+    Args:
+        user: The already-authenticated user (resolved via get_current_user).
+
+    Returns:
+        The same user, unchanged, once authorization is confirmed.
+
+    Raises:
+        HTTPException: 403 if the user is authenticated but not Ops-authorized.
+    """
+    if not user.is_ops:
+        logger.warning("ops_authorization_denied", user_id=user.id)
+        raise HTTPException(
+            status_code=403,
+            detail="This endpoint requires Ops authorization.",
+        )
+    return user
+
+
 async def get_current_session(
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ) -> Session:
