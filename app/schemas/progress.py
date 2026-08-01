@@ -46,6 +46,24 @@ class LearnerProgress(BaseModel):
         description="UTC timestamp this snapshot was computed at.",
     )
 
+    @field_validator("as_of")
+    @classmethod
+    def _ensure_as_of_timezone_aware(cls, value: datetime) -> datetime:
+        """Normalize naive datetimes to UTC so downstream comparisons are safe.
+
+        Needed for the same reason as ``last_active_at``'s validator below:
+        callers that round-trip a snapshot through a DB column typed as
+        ``TIMESTAMP WITHOUT TIME ZONE`` (e.g. app.atrisk.progress_store)
+        get a naive datetime back even though it was originally UTC-aware
+        going in. Without this, ``days_inactive`` below can crash with
+        "can't subtract offset-naive and offset-aware datetimes" whenever
+        ``as_of`` comes back naive but ``last_active_at`` doesn't (it has
+        its own equivalent normalization already).
+        """
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
+
     total_tasks: int = Field(..., ge=0, description="Total tasks assigned to the learner so far.")
     completed_tasks: int = Field(..., ge=0, description="Tasks the learner has completed.")
     missed_deadlines: int = Field(default=0, ge=0, description="Count of task/project deadlines missed to date.")

@@ -46,7 +46,6 @@ correctly fail to resolve rather than silently doing nothing.
 from __future__ import annotations
 
 import asyncio
-import logging
 from typing import Callable, Optional
 
 from langchain_core.messages import AIMessage
@@ -54,11 +53,10 @@ from sqlmodel import select
 
 from app.atrisk.nudges import NotificationSender
 from app.core.langgraph.graph import LangGraphAgent
+from app.core.logging import logger
 from app.models.session import Session as ChatSession
 from app.schemas.notification import Notification
-from app.services.database import DatabaseService
-
-logger = logging.getLogger(__name__)
+from app.services.database import database_service
 
 SessionResolver = Callable[[str], Optional[str]]
 
@@ -87,7 +85,7 @@ def default_session_resolver(learner_id: str) -> Optional[str]:
     except ValueError:
         return None
 
-    db_service = DatabaseService()
+    db_service = database_service  # shared singleton -- see app.atrisk.state's module docstring for why
     with db_service.get_session_maker() as db_session:
         row = db_session.exec(
             select(ChatSession).where(ChatSession.user_id == user_id).order_by(ChatSession.created_at.desc())
