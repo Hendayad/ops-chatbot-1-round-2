@@ -463,7 +463,7 @@ class LangGraphAgent:
         state: StateSnapshot = await graph.aget_state(config=config)
         return self.__process_messages(state.values["messages"]) if state.values else []
 
-    async def append_message(self, session_id: str, message: Any) -> None:
+    async def append_message(self, session_id: str, message: Any, *, skip_if_dedup_key: Optional[str] = None) -> None:
         """Append one message to a session's checkpointed chat history.
 
         `GraphState.messages` (defined above) is a plain `list[Any]` with
@@ -500,11 +500,36 @@ class LangGraphAgent:
         Args:
             session_id: The chat session to append to (== thread_id).
             message: A BaseMessage (e.g. AIMessage) to append.
+            skip_if_dedup_key: If set, and an existing message in this
+                session already carries this value in its
+                `additional_kwargs["dedup_key"]`, this is a no-op instead
+                of appending a second copy. Exists specifically for
+                out-of-band deliveries like at-risk nudges, where the
+                caller (`app.scheduler.runner.deliver_with_retry`) retries
+                on any exception -- append_message itself has no other way
+                to know "did the previous attempt actually already write
+                this," since a retry only fires because something *else*
+                raised, possibly after this call already succeeded. Found
+                the hard way: a bug in the nudge success-logging call
+                (fixed separately in
+                `app.notifications.learner_chat_channel`) made every
+                successful delivery look like a failure, so tenacity kept
+                retrying an already-delivered nudge and the same message
+                landed in a real chat session multiple times. This check
+                makes the append itself idempotent so that class of bug
+                (or any future one with the same shape) can't do that
+                again.
         """
         graph = await self._get_graph()
         config: RunnableConfig = {"configurable": {"thread_id": session_id}}
         state: StateSnapshot = await graph.aget_state(config=config)
         existing_messages = list(state.values.get("messages", [])) if state.values else []
+
+        if skip_if_dedup_key is not None:
+            for existing in existing_messages:
+                if getattr(existing, "additional_kwargs", {}).get("dedup_key") == skip_if_dedup_key:
+                    return
+
         await graph.aupdate_state(config, {"messages": existing_messages + [message]}, as_node="chat")
 
     def __process_messages(self, messages: list[BaseMessage]) -> list[Any]:

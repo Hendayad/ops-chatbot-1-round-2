@@ -184,7 +184,14 @@ class LearnerChatChannel(NotificationSender):
                 "dedup_key": notification.dedup_key,
             },
         )
-        await self._agent.append_message(session_id, nudge_message)
+        # skip_if_dedup_key makes this idempotent: app.scheduler.runner's
+        # tenacity retry can call send() again for the same notification
+        # after an already-successful append (e.g. if something *else*
+        # raised right after -- see app.core.langgraph.graph.LangGraphAgent
+        # .append_message's skip_if_dedup_key docstring for the incident
+        # that motivated this), and without this check that would land a
+        # second copy of the same nudge in the learner's real chat.
+        await self._agent.append_message(session_id, nudge_message, skip_if_dedup_key=notification.dedup_key)
         logger.info(
             "learner_chat_nudge_delivered",
             session_id=session_id,
