@@ -145,12 +145,14 @@ async def create_escalation_request(
     return EscalationTriggerRequest(
         source=source,
         reason=reason,
-        ticket=Ticket(
-            problem=problem,
-            what_was_tried=what_was_tried,
-            context=context,
-            suggested_next_step=suggested_next_step,
-            status=status,
+        ticket=Ticket.model_validate(
+            {
+                "problem": problem,
+                "what_was_tried": what_was_tried,
+                "context": context,
+                "suggested_next_step": suggested_next_step,
+                "status": status,
+            }
         ),
         conversation_summary=ConversationSummary(**summary_payload),
         session_id=session_id,

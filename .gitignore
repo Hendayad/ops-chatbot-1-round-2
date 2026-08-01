@@ -10,3 +10,4 @@ atrisk_token.txt
 *_log.txt
 logs/
 evals/reports/
+.pytest_tmp/
