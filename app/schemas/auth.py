@@ -40,6 +40,7 @@ class TokenResponse(BaseResponse):
     access_token: str = Field(..., description="The JWT access token")
     token_type: str = Field(default="bearer", description="The type of token")
     expires_at: datetime = Field(..., description="When the token expires")
+    role: str
 
 
 class UserCreate(BaseModel):
