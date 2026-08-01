@@ -99,8 +99,14 @@ class LangGraphAgent:
         """
         if self._connection_pool is None:
             try:
-                # Configure pool size based on environment
+                # Configure pool size based on environment. min_size must be
+                # passed explicitly -- psycopg_pool's AsyncConnectionPool defaults
+                # to min_size=4 when it's omitted, so on a small POSTGRES_POOL_SIZE
+                # (e.g. 3, as used against Supabase's connection-capped Session
+                # pooler) the unset min_size (4) would exceed max_size and raise
+                # "max_size must be greater or equal than min_size" at startup.
                 max_size = settings.POSTGRES_POOL_SIZE
+                min_size = min(1, max_size)
 
                 connection_url = (
                     "postgresql://"
@@ -111,6 +117,7 @@ class LangGraphAgent:
                 self._connection_pool = AsyncConnectionPool(
                     connection_url,
                     open=False,
+                    min_size=min_size,
                     max_size=max_size,
                     kwargs={
                         "autocommit": True,
@@ -150,10 +157,10 @@ class LangGraphAgent:
 
         username = config.get("metadata", {}).get("username")
         thread_id = config.get("configurable", {}).get("thread_id")
-        SYSTEM_PROMPT = load_system_prompt(username=username, long_term_memory=state.long_term_memory)
+        SYSTEM_PROMPT = load_system_prompt(username=username, long_term_memory=state.get("long_term_memory", ""))
 
         # Prepare messages with system prompt
-        messages = prepare_messages(state.messages, SYSTEM_PROMPT)
+        messages = prepare_messages(state["messages"], SYSTEM_PROMPT)
 
         try:
             # Use LLM service with automatic retries and circular fallback
