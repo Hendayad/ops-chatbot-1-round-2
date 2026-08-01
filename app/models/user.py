@@ -18,7 +18,12 @@ if TYPE_CHECKING:
     from app.models.session import Session
     from app.models.notification_preference import NotificationPreference
 
+from enum import Enum
 
+
+class UserRole(str, Enum):
+    LEARNER = "learner"
+    ADMIN = "admin"
 class User(BaseModel, table=True):
     """User model for storing user accounts.
 
@@ -27,6 +32,10 @@ class User(BaseModel, table=True):
         email: User's email (unique)
         hashed_password: Bcrypt hashed password
         username: Optional display name for the user
+        is_ops: Whether this user is authorized for Ops-only endpoints
+            (e.g. the at-risk dashboard APIs) -- defaults False for every
+            new account, so authorization is opt-in per user rather than
+            implicit from just being logged in.
         created_at: When the user was created
         sessions: Relationship to user's chat sessions
     """
@@ -35,7 +44,12 @@ class User(BaseModel, table=True):
     email: str = Field(unique=True, index=True)
     hashed_password: str
     username: Optional[str] = Field(default=None, index=False)
+    is_ops: bool = Field(
+        default=False,
+        description="Ops/admin authorization flag required for Ops-only endpoints (e.g. /atrisk/*).",
+    )
     sessions: List["Session"] = Relationship(back_populates="user")
+    role: UserRole = UserRole.LEARNER
     notification_preference: Optional["NotificationPreference"] = Relationship(
         back_populates="user",
         sa_relationship_kwargs={
@@ -57,3 +71,4 @@ class User(BaseModel, table=True):
 
 # Avoid circular imports
 from app.models.session import Session  # noqa: E402
+from app.models.notification_preference import NotificationPreference  # noqa: E402

@@ -1,0 +1,336 @@
+"""Persistence layer for at-risk state — the auditable, shared risk contract (PRD F2.3).
+
+Every detector run upserts one AtRiskStateRecord per (learner_id, run_date).
+Re-running the job for the same day always converges on the same row
+instead of inserting duplicates, which is what makes the job idempotent
+from the persistence side. Nothing here is ever deleted or overwritten
+across days, so the table doubles as the audit trail Ops/dashboards can
+query for trend history — the same "shared risk contract" both the
+scheduled job and the Ops dashboards read from.
+
+Follows the same pattern as app/notifications/service.py: a fresh
+DatabaseService() per call, reserve-then-commit against a DB-level unique
+constraint, and fall back to an update path if a concurrent run wins the
+insert race.
+"""
+
+from __future__ import annotations
+
+from datetime import UTC, date, datetime, timedelta
+from typing import Optional
+
+from pydantic import BaseModel as SchemaBaseModel
+from sqlalchemy.exc import IntegrityError
+from sqlmodel import Field, UniqueConstraint, select
+
+from app.atrisk.detector import DetectionResult
+from app.models.base import BaseModel as ORMBaseModel
+from app.services.database import DatabaseService
+
+
+class AtRiskStateRecord(ORMBaseModel, table=True):
+    """One auditable snapshot of a learner's at-risk evaluation for one day.
+
+    Attributes:
+        id: Primary key.
+        learner_id: The learner this record is for.
+        cohort_id: The learner's cohort at evaluation time. Nullable
+            because rows persisted before this column existed have no
+            value -- those rows simply won't match any cohort-scoped
+            query, which is the correct behavior for orphaned legacy data.
+        run_date: Calendar date (UTC) the detector ran for. Combined with
+            learner_id, this is the idempotency key — re-running the
+            detector job for the same day updates this row instead of
+            inserting a duplicate.
+        at_risk: Overall verdict for this run.
+        score: Number of individual signals tripped (0-4).
+        missed_deadlines: Whether the missed-deadlines signal tripped.
+        inactive: Whether the inactivity signal tripped.
+        low_progress: Whether the low-progress signal tripped.
+        low_feedback: Whether the low-feedback signal tripped.
+        thresholds_json: The RiskThresholds used for this evaluation,
+            JSON-encoded, so the record stays self-describing even if
+            defaults change later.
+        evaluated_at: Exact timestamp the evaluation ran.
+        created_at: Inherited from BaseModel — when this row was first written.
+    """
+
+    __table_args__ = (UniqueConstraint("learner_id", "run_date", name="uq_atriskstaterecord_learner_rundate"),)
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    learner_id: str = Field(index=True)
+    cohort_id: Optional[str] = Field(default=None, index=True)
+    run_date: date = Field(index=True)
+    at_risk: bool
+    score: int
+    missed_deadlines: bool
+    inactive: bool
+    low_progress: bool
+    low_feedback: bool
+    thresholds_json: str
+    evaluated_at: datetime
+
+
+class AtRiskAggregate(SchemaBaseModel):
+    """Read-only aggregate of at-risk state for one run_date, for Ops dashboards (PRD F3.3)."""
+
+    run_date: date
+    total_learners: int
+    at_risk_count: int
+    at_risk_percent: float
+    missed_deadlines_count: int
+    inactive_count: int
+    low_progress_count: int
+    low_feedback_count: int
+
+
+def _existing_record(session, learner_id: str, run_date: date) -> Optional[AtRiskStateRecord]:
+    """Look up the record for one learner + run_date, if any."""
+    return session.exec(
+        select(AtRiskStateRecord).where(
+            AtRiskStateRecord.learner_id == learner_id,
+            AtRiskStateRecord.run_date == run_date,
+        )
+    ).first()
+
+
+def upsert_at_risk_state(result: DetectionResult, run_date: Optional[date] = None) -> AtRiskStateRecord:
+    """Persist one learner's detection result as an auditable state record.
+
+    Idempotent: re-running the detector for the same learner_id + run_date
+    updates that day's record in place rather than inserting a duplicate.
+    This is what lets app/jobs/atrisk_job.py be safely re-run or retried
+    (e.g. after a transient failure) without corrupting the audit trail
+    with duplicate rows for the same day.
+
+    Args:
+        result: The detection result to persist.
+        run_date: The calendar date this run counts as. Defaults to the
+            date portion of result.evaluated_at.
+
+    Returns:
+        The persisted (inserted or updated) AtRiskStateRecord.
+    """
+    effective_run_date = run_date or result.evaluated_at.date()
+    signals = result.signals
+
+    db_service = DatabaseService()
+    with db_service.get_session_maker() as session:
+        record = _existing_record(session, result.learner_id, effective_run_date)
+
+        if record is None:
+            record = AtRiskStateRecord(
+                learner_id=result.learner_id,
+                cohort_id=result.cohort_id,
+                run_date=effective_run_date,
+                at_risk=signals.at_risk,
+                score=signals.score,
+                missed_deadlines=signals.missed_deadlines,
+                inactive=signals.inactive,
+                low_progress=signals.low_progress,
+                low_feedback=signals.low_feedback,
+                thresholds_json=result.thresholds.model_dump_json(),
+                evaluated_at=result.evaluated_at,
+            )
+            try:
+                session.add(record)
+                session.commit()
+                session.refresh(record)
+                return record
+            except IntegrityError:
+                # A concurrent run of this same job won the insert race —
+                # fall through and update that row instead.
+                session.rollback()
+                record = _existing_record(session, result.learner_id, effective_run_date)
+                if record is None:
+                    # The unique constraint fired, so a row must exist now;
+                    # not finding one means something else deleted it
+                    # concurrently, which the idempotency contract never
+                    # expects. Fail loudly rather than silently no-op.
+                    raise RuntimeError(
+                        f"Lost insert race for learner_id={result.learner_id!r} "
+                        f"run_date={effective_run_date!r} but no row was found on retry."
+                    )
+
+        # Update path: either the record already existed, or we just lost
+        # the insert race above. Either way, make it reflect this evaluation.
+        record.cohort_id = result.cohort_id
+        record.at_risk = signals.at_risk
+        record.score = signals.score
+        record.missed_deadlines = signals.missed_deadlines
+        record.inactive = signals.inactive
+        record.low_progress = signals.low_progress
+        record.low_feedback = signals.low_feedback
+        record.thresholds_json = result.thresholds.model_dump_json()
+        record.evaluated_at = result.evaluated_at
+        session.add(record)
+        session.commit()
+        session.refresh(record)
+        return record
+
+
+def get_latest_state(learner_id: str) -> Optional[AtRiskStateRecord]:
+    """Return a learner's most recent at-risk state record, if any."""
+    db_service = DatabaseService()
+    with db_service.get_session_maker() as session:
+        return session.exec(
+            select(AtRiskStateRecord)
+            .where(AtRiskStateRecord.learner_id == learner_id)
+            .order_by(AtRiskStateRecord.run_date.desc())  # pyright: ignore[reportAttributeAccessIssue] -- run_date is a Column at runtime, not a plain `date`
+        ).first()
+
+
+def get_history(learner_id: str, limit: int = 30) -> list[AtRiskStateRecord]:
+    """Return a learner's at-risk history, most recent first — the audit trail."""
+    db_service = DatabaseService()
+    with db_service.get_session_maker() as session:
+        rows = session.exec(
+            select(AtRiskStateRecord)
+            .where(AtRiskStateRecord.learner_id == learner_id)
+            .order_by(AtRiskStateRecord.run_date.desc())  # pyright: ignore[reportAttributeAccessIssue] -- run_date is a Column at runtime, not a plain `date`
+            .limit(limit)
+        ).all()
+        return list(rows)
+
+
+def get_latest_run_date(cohort_id: Optional[str] = None) -> Optional[date]:
+    """Return the most recent run_date with any persisted state, if any.
+
+    Args:
+        cohort_id: When given, only considers that cohort's state -- the
+            globally latest date can belong to a different cohort, which
+            would otherwise mislead a cohort-scoped caller (e.g.
+            app.api.v1.atrisk's trend endpoint) into asking for a day that
+            has no data for the cohort it actually cares about.
+    """
+    db_service = DatabaseService()
+    with db_service.get_session_maker() as session:
+        query = select(AtRiskStateRecord.run_date).order_by(  # pyright: ignore[reportCallIssue, reportArgumentType]
+            AtRiskStateRecord.run_date.desc()  # pyright: ignore[reportAttributeAccessIssue]
+        )
+        if cohort_id is not None:
+            query = query.where(AtRiskStateRecord.cohort_id == cohort_id)
+        return session.exec(query).first()
+
+
+def _aggregate_from_records(target_date: date, records: list[AtRiskStateRecord]) -> AtRiskAggregate:
+    """Build one AtRiskAggregate from a batch of records already known to share `target_date`."""
+    total = len(records)
+    at_risk_count = sum(1 for r in records if r.at_risk)
+    return AtRiskAggregate(
+        run_date=target_date,
+        total_learners=total,
+        at_risk_count=at_risk_count,
+        at_risk_percent=round((at_risk_count / total * 100), 2) if total else 0.0,
+        missed_deadlines_count=sum(1 for r in records if r.missed_deadlines),
+        inactive_count=sum(1 for r in records if r.inactive),
+        low_progress_count=sum(1 for r in records if r.low_progress),
+        low_feedback_count=sum(1 for r in records if r.low_feedback),
+    )
+
+
+def get_aggregate(run_date: Optional[date] = None, cohort_id: Optional[str] = None) -> AtRiskAggregate:
+    """Read-only aggregate of at-risk state for one run_date, for Ops dashboards.
+
+    Defaults to the most recent run_date with any persisted state.
+
+    Args:
+        run_date: The date to aggregate. Defaults to the latest available.
+        cohort_id: When given, scopes the aggregate to that cohort only --
+            omitting it combines every cohort's state, which is correct
+            for internal/test callers but not for an Ops-facing endpoint
+            serving more than one cohort (see app.api.v1.atrisk, which
+            always passes this).
+
+    Returns:
+        AtRiskAggregate with totals and a per-signal breakdown. All counts
+        are zero if no state has been persisted yet.
+    """
+    target_date = run_date or get_latest_run_date(cohort_id=cohort_id)
+    if target_date is None:
+        return _aggregate_from_records(datetime.now(UTC).date(), [])
+
+    db_service = DatabaseService()
+    with db_service.get_session_maker() as session:
+        query = select(AtRiskStateRecord).where(AtRiskStateRecord.run_date == target_date)
+        if cohort_id is not None:
+            query = query.where(AtRiskStateRecord.cohort_id == cohort_id)
+        records = session.exec(query).all()
+        return _aggregate_from_records(target_date, list(records))
+
+
+def get_aggregate_trend(
+    start_date: date, end_date: Optional[date] = None, cohort_id: Optional[str] = None
+) -> list[AtRiskAggregate]:
+    """Read-only day-by-day at-risk trend for the Ops dashboards (PRD F3.3 / M05-T1 req 4).
+
+    Returns one AtRiskAggregate per calendar day in [start_date, end_date],
+    inclusive, in ascending date order — including days with no persisted
+    state (zero-filled), so a dashboard can plot a continuous line instead
+    of skipping gaps. This is a pure read: it never writes, and calling it
+    twice for the same range returns the same result unless new state was
+    persisted for a day in between.
+
+    Args:
+        start_date: First day of the trend window (inclusive).
+        end_date: Last day of the trend window (inclusive). Defaults to
+            today (UTC) if omitted.
+        cohort_id: When given, scopes every day's aggregate to that cohort
+            only (see get_aggregate's docstring for why this matters).
+
+    Returns:
+        One AtRiskAggregate per day in the window, oldest first. Raises
+        ValueError if end_date is before start_date.
+    """
+    effective_end_date = end_date or datetime.now(UTC).date()
+    if effective_end_date < start_date:
+        raise ValueError(f"end_date ({effective_end_date}) is before start_date ({start_date})")
+
+    db_service = DatabaseService()
+    with db_service.get_session_maker() as session:
+        query = select(AtRiskStateRecord).where(
+            AtRiskStateRecord.run_date >= start_date,
+            AtRiskStateRecord.run_date <= effective_end_date,
+        )
+        if cohort_id is not None:
+            query = query.where(AtRiskStateRecord.cohort_id == cohort_id)
+        records = session.exec(query).all()
+
+    records_by_date: dict[date, list[AtRiskStateRecord]] = {}
+    for record in records:
+        records_by_date.setdefault(record.run_date, []).append(record)
+
+    trend: list[AtRiskAggregate] = []
+    day_count = (effective_end_date - start_date).days + 1
+    for offset in range(day_count):
+        day = start_date + timedelta(days=offset)
+        trend.append(_aggregate_from_records(day, records_by_date.get(day, [])))
+    return trend
+
+
+def get_at_risk_learner_ids(run_date: Optional[date] = None, cohort_id: Optional[str] = None) -> list[str]:
+    """Read-only: learner_ids flagged at_risk for a given run_date (defaults to latest), for one cohort.
+
+    Args:
+        run_date: The date to check. Defaults to the latest available
+            (scoped to cohort_id when one is given -- see get_aggregate's
+            docstring for why the global latest date is the wrong default
+            once a cohort filter is in play).
+        cohort_id: When given, only learner_ids from that cohort are
+            returned -- omitting it returns every cohort's flagged
+            learners combined, which app.api.v1.atrisk never does.
+    """
+    target_date = run_date or get_latest_run_date(cohort_id=cohort_id)
+    if target_date is None:
+        return []
+
+    db_service = DatabaseService()
+    with db_service.get_session_maker() as session:
+        query = select(AtRiskStateRecord.learner_id).where(
+            AtRiskStateRecord.run_date == target_date,
+            AtRiskStateRecord.at_risk == True,  # noqa: E712 -- SQLAlchemy column comparison, not a Python bool check
+        )
+        if cohort_id is not None:
+            query = query.where(AtRiskStateRecord.cohort_id == cohort_id)
+        rows = session.exec(query).all()
+        return list(rows)
