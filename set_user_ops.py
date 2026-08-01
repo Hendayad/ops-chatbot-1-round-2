@@ -26,6 +26,15 @@ from sqlmodel import select
 from app.models.user import User
 from app.services.database import DatabaseService
 
+# Merging main added User.notification_preference, a relationship declared
+# by string name ("NotificationPreference"). SQLAlchemy only resolves that
+# name if the class has actually been imported somewhere by the time any
+# query configures the User mapper -- the live app gets this for free via
+# its own import chain, but a standalone script like this one needs the
+# same import explicitly, or querying User blows up with "failed to locate
+# a name ('NotificationPreference')".
+from app.models.notification_preference import NotificationPreference  # noqa: F401
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Flip a user's is_ops flag to True.")

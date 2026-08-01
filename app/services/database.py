@@ -7,6 +7,7 @@ from typing import (
 )
 
 from fastapi import HTTPException
+from sqlalchemy.engine import URL
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.pool import QueuePool
 from sqlmodel import (
@@ -40,10 +41,19 @@ class DatabaseService:
             pool_size = settings.POSTGRES_POOL_SIZE
             max_overflow = settings.POSTGRES_MAX_OVERFLOW
 
-            # Create engine with appropriate pool configuration
-            connection_url = (
-                f"postgresql://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}"
-                f"@{settings.POSTGRES_HOST}:{settings.POSTGRES_PORT}/{settings.POSTGRES_DB}"
+            # Create engine with appropriate pool configuration.
+            # Built via URL.create() (not an f-string) so SQLAlchemy handles
+            # percent-encoding of any special characters in the username or
+            # password -- a raw f-string breaks the moment a password contains
+            # an unescaped "@", "#", "?", "%", etc. (as hosted-Postgres
+            # generated passwords, e.g. Supabase's, commonly do).
+            connection_url = URL.create(
+                "postgresql",
+                username=settings.POSTGRES_USER,
+                password=settings.POSTGRES_PASSWORD,
+                host=settings.POSTGRES_HOST,
+                port=settings.POSTGRES_PORT,
+                database=settings.POSTGRES_DB,
             )
 
             self.engine = create_engine(

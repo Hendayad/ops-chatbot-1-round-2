@@ -18,8 +18,19 @@ from __future__ import annotations
 import random
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy.exc import OperationalError
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+
 from app.atrisk.detector import run_detector
 from app.atrisk.state import upsert_at_risk_state
+
+# Merging main added User.notification_preference, a relationship declared
+# by string name ("NotificationPreference"). SQLAlchemy can't resolve that
+# name unless the class has actually been imported somewhere -- without this,
+# mapper configuration fails with InvalidRequestError the first time any
+# query touches the User/AtRiskStateRecord mappers.
+from app.models.notification_preference import NotificationPreference  # noqa: F401
+from app.services.database import database_service
 from app.schemas.progress import FeedbackEntry, LearnerProgress
 
 random.seed(7)  # reproducible demo data
@@ -56,6 +67,29 @@ def _make_learner(learner_id: str, as_of: datetime, risk_bias: float) -> Learner
     )
 
 
+@retry(
+    retry=retry_if_exception_type(OperationalError),
+    stop=stop_after_attempt(5),
+    wait=wait_exponential(multiplier=1, min=1, max=15),
+    reraise=True,
+)
+def _upsert_with_retry(result, run_date):
+    """Persist one learner's result, retrying transient pooler drops.
+
+    A free-tier/shared connection pooler (e.g. Supabase's Session pooler)
+    can reset an in-flight connection under load even when the app's own
+    pool settings are conservative. On failure, dispose the shared engine
+    so the pool's stale connection records are dropped and the next
+    attempt opens a genuinely fresh connection, then retry with backoff
+    instead of losing the whole ~1,680-call run to one blip.
+    """
+    try:
+        upsert_at_risk_state(result, run_date=run_date)
+    except OperationalError:
+        database_service.engine.dispose()
+        raise
+
+
 def main() -> None:
     today = datetime.now(UTC).date()
     for day_offset in range(NUM_DAYS - 1, -1, -1):
@@ -71,7 +105,7 @@ def main() -> None:
         ]
         results = run_detector(snapshots)
         for result in results:
-            upsert_at_risk_state(result, run_date=run_date)
+            _upsert_with_retry(result, run_date=run_date)
 
         at_risk_count = sum(1 for r in results if r.signals.at_risk)
         print(f"{run_date}: {at_risk_count}/{NUM_LEARNERS} at risk")

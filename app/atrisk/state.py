@@ -8,10 +8,14 @@ across days, so the table doubles as the audit trail Ops/dashboards can
 query for trend history — the same "shared risk contract" both the
 scheduled job and the Ops dashboards read from.
 
-Follows the same pattern as app/notifications/service.py: a fresh
-DatabaseService() per call, reserve-then-commit against a DB-level unique
-constraint, and fall back to an update path if a concurrent run wins the
-insert race.
+Follows the same reserve-then-commit pattern as app/notifications/service.py:
+a fresh Session per call against a DB-level unique constraint, falling back
+to an update path if a concurrent run wins the insert race. The Session is
+opened per call via the app's shared `database_service` singleton (not a
+fresh DatabaseService()/engine per call) -- on a connection-capped pooler
+(e.g. Supabase's Session pooler), a fresh engine per call opens a new
+connection pool that isn't guaranteed to release immediately, and a tight
+loop of calls (e.g. a seed script) can exhaust the pooler's connection cap.
 """
 
 from __future__ import annotations
@@ -25,7 +29,7 @@ from sqlmodel import Field, UniqueConstraint, select
 
 from app.atrisk.detector import DetectionResult
 from app.models.base import BaseModel as ORMBaseModel
-from app.services.database import DatabaseService
+from app.services.database import database_service
 
 
 class AtRiskStateRecord(ORMBaseModel, table=True):
@@ -114,7 +118,7 @@ def upsert_at_risk_state(result: DetectionResult, run_date: Optional[date] = Non
     effective_run_date = run_date or result.evaluated_at.date()
     signals = result.signals
 
-    db_service = DatabaseService()
+    db_service = database_service  # shared singleton -- see module docstring
     with db_service.get_session_maker() as session:
         record = _existing_record(session, result.learner_id, effective_run_date)
 
@@ -171,7 +175,7 @@ def upsert_at_risk_state(result: DetectionResult, run_date: Optional[date] = Non
 
 def get_latest_state(learner_id: str) -> Optional[AtRiskStateRecord]:
     """Return a learner's most recent at-risk state record, if any."""
-    db_service = DatabaseService()
+    db_service = database_service  # shared singleton -- see module docstring
     with db_service.get_session_maker() as session:
         return session.exec(
             select(AtRiskStateRecord)
@@ -182,7 +186,7 @@ def get_latest_state(learner_id: str) -> Optional[AtRiskStateRecord]:
 
 def get_history(learner_id: str, limit: int = 30) -> list[AtRiskStateRecord]:
     """Return a learner's at-risk history, most recent first — the audit trail."""
-    db_service = DatabaseService()
+    db_service = database_service  # shared singleton -- see module docstring
     with db_service.get_session_maker() as session:
         rows = session.exec(
             select(AtRiskStateRecord)
@@ -203,7 +207,7 @@ def get_latest_run_date(cohort_id: Optional[str] = None) -> Optional[date]:
             app.api.v1.atrisk's trend endpoint) into asking for a day that
             has no data for the cohort it actually cares about.
     """
-    db_service = DatabaseService()
+    db_service = database_service  # shared singleton -- see module docstring
     with db_service.get_session_maker() as session:
         query = select(AtRiskStateRecord.run_date).order_by(  # pyright: ignore[reportCallIssue, reportArgumentType]
             AtRiskStateRecord.run_date.desc()  # pyright: ignore[reportAttributeAccessIssue]
@@ -250,7 +254,7 @@ def get_aggregate(run_date: Optional[date] = None, cohort_id: Optional[str] = No
     if target_date is None:
         return _aggregate_from_records(datetime.now(UTC).date(), [])
 
-    db_service = DatabaseService()
+    db_service = database_service  # shared singleton -- see module docstring
     with db_service.get_session_maker() as session:
         query = select(AtRiskStateRecord).where(AtRiskStateRecord.run_date == target_date)
         if cohort_id is not None:
@@ -286,7 +290,7 @@ def get_aggregate_trend(
     if effective_end_date < start_date:
         raise ValueError(f"end_date ({effective_end_date}) is before start_date ({start_date})")
 
-    db_service = DatabaseService()
+    db_service = database_service  # shared singleton -- see module docstring
     with db_service.get_session_maker() as session:
         query = select(AtRiskStateRecord).where(
             AtRiskStateRecord.run_date >= start_date,
@@ -324,7 +328,7 @@ def get_at_risk_learner_ids(run_date: Optional[date] = None, cohort_id: Optional
     if target_date is None:
         return []
 
-    db_service = DatabaseService()
+    db_service = database_service  # shared singleton -- see module docstring
     with db_service.get_session_maker() as session:
         query = select(AtRiskStateRecord.learner_id).where(
             AtRiskStateRecord.run_date == target_date,
