@@ -1,7 +1,7 @@
 import requests
 
 
-BASE_URL = "http://127.0.0.1:8000/api/v1"
+from api.config import BASE_URL
 
 
 
@@ -49,9 +49,6 @@ def get_current_user(token):
         },
     )
 
-    print("TOKEN:", token)
-    print("STATUS:", response.status_code)
-    print("BODY:", response.text)
 
     response.raise_for_status()
 

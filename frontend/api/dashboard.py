@@ -1,6 +1,6 @@
 import requests
 
-BASE_URL = "http://127.0.0.1:8000/api/v1"
+from api.config import BASE_URL
 
 
 def get_dashboard_metrics(token):
@@ -18,13 +18,10 @@ def get_dashboard_metrics(token):
             headers=headers
         )
 
-        print("Dashboard API Status:", response.status_code)
-        print("Dashboard API Response:", response.text)
 
         response.raise_for_status()
 
         return response.json()
 
     except requests.exceptions.RequestException as e:
-        print("Dashboard API Error:", e)
         return None
