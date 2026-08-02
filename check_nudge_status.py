@@ -25,7 +25,7 @@ from app.models.notification import NotificationRecord
 # process by the time the first query configures the shared mapper registry.
 # app/services/database.py doesn't pull this in, and neither does anything
 # else this script imports -- so without this, any query here blows up with
-# "InvalidRequestError: ... failed to locate a name ('NotificationPreference')"
+# "InvalidRequestError: ... failed to locate a name ('NotificationPreference')"  # noqa: ERA001 -- prose quoting an error message, not dead code
 # the moment SQLAlchemy configures User's mapper. alembic/env.py carries the
 # same explicit import for the same reason.
 from app.models.notification_preference import NotificationPreference  # noqa: F401

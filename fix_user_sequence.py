@@ -1,5 +1,4 @@
-"""One-off fix: resync the "user" table's auto-increment sequence with its
-actual max id.
+"""One-off fix: resync the "user" table's auto-increment sequence with its actual max id.
 
 Root cause: at some point rows got inserted into "user" with explicit id
 values (bypassing the sequence) -- likely from the various diagnostic/demo
