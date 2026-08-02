@@ -11,6 +11,7 @@ from components.sidebar import show_sidebar
 from components.styles import load_css
 
 from pages.dashboard import show_dashboard
+from pages.cohorts import show_cohorts
 from pages.users import show_users
 from pages.chat import show_chat
 from pages.tickets import show_tickets
@@ -257,6 +258,9 @@ else:
 
     elif page == "Guide":
         show_guide()
+
+    elif page == "Cohorts":
+        show_cohorts()
 
 
     elif page is None:

@@ -5,7 +5,7 @@ from components.styles import page_header, role_badge_html
 
 from api.config import BASE_URL
 
-ROLE_OPTIONS = ["LEARNER", "ADMIN"]
+ROLE_OPTIONS = ["LEARNER", "ADMIN","PROGRAM_LEAD"]
 
 # No endpoint currently returns the list of valid groups/projects, so these
 # are placeholder options — swap in a real fetch once one exists.

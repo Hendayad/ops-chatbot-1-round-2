@@ -108,3 +108,11 @@ At the end of the project, stakeholders will receive:
 - Short conversation summaries for the Operations team
 - A dashboard or ticketing setup for escalated issues
 - Clear instructions for updating the assistant's approved source materials for future programs
+
+## Operations Documentation
+
+The following operational documents are available:
+
+- Admin Guide
+- Materials Update Guide
+- Operational Runbook

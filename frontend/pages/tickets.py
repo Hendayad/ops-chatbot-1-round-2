@@ -1,6 +1,12 @@
 import streamlit as st
 import pandas as pd
 
+from st_aggrid import (
+    AgGrid,
+    GridOptionsBuilder,
+    GridUpdateMode,
+)
+
 from components.styles import (
     page_header,
     badge,
@@ -25,15 +31,11 @@ def show_tickets():
     try:
 
         with st.spinner("Loading tickets..."):
-
-            data = get_tickets(
-                st.session_state.token
-            )
+            data = get_tickets(st.session_state.token)
 
         tickets = data["tickets"]
 
         if not tickets:
-
             st.success("No escalation tickets right now 🎉")
             return
 
@@ -50,23 +52,51 @@ def show_tickets():
         ]
 
         st.write("### Tickets")
-        st.caption("Click a ticket to view its details.")
+        st.caption("Click a row to view its details.")
 
-        event = st.dataframe(
-            display,
-            use_container_width=True,
-            hide_index=True,
-            on_select="rerun",
-            selection_mode="single-row",
+        gb = GridOptionsBuilder.from_dataframe(display)
+
+        gb.configure_default_column(
+            sortable=True,
+            filter=True,
+            resizable=True,
         )
 
-        selected_rows = event.selection.rows
+        gb.configure_selection(
+            selection_mode="single",
+            use_checkbox=False,
+        )
 
-        if not selected_rows:
+        gb.configure_pagination(
+            enabled=True,
+            paginationAutoPageSize=True,
+        )
+
+        gb.configure_grid_options(
+            suppressRowClickSelection=False,
+            rowSelection="single",
+            animateRows=True,
+        )
+
+        grid_response = AgGrid(
+            display,
+            gridOptions=gb.build(),
+            update_mode=GridUpdateMode.SELECTION_CHANGED,
+            fit_columns_on_grid_load=True,
+            height=350,
+            theme="streamlit",
+            reload_data=False,
+        )
+
+        selected = grid_response["selected_rows"]
+
+        if len(selected) == 0:
             st.info("Select a ticket from the table above.")
             return
 
-        ticket = df.iloc[selected_rows[0]]
+        ticket_id = selected[0]["ticket_id"]
+
+        ticket = df[df["ticket_id"] == ticket_id].iloc[0]
 
         st.write("")
 
@@ -75,9 +105,7 @@ def show_tickets():
             top_col, badge_col = st.columns([3, 2])
 
             with top_col:
-                st.subheader(
-                    f"Ticket {ticket['ticket_id']}"
-                )
+                st.subheader(f"Ticket {ticket['ticket_id']}")
 
             with badge_col:
                 st.markdown(
@@ -120,20 +148,14 @@ def show_tickets():
                             ticket["ticket_id"],
                         )
 
-                    st.success(
-                        "Ticket resolved successfully."
-                    )
+                    st.success("Ticket resolved successfully.")
 
                     st.rerun()
 
             else:
 
-                st.success(
-                    "This ticket has already been resolved."
-                )
+                st.success("This ticket has already been resolved.")
 
     except Exception as e:
 
-        st.error(
-            f"Couldn't load tickets: {e}"
-        )
+        st.error(f"Couldn't load tickets: {e}")

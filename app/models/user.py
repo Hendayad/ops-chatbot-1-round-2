@@ -20,9 +20,11 @@ if TYPE_CHECKING:
 
 from enum import Enum
 
+from typing import Optional
 
 class UserRole(str, Enum):
     LEARNER = "learner"
+    PROGRAM_LEAD = "program_lead"
     ADMIN = "admin"
 class User(BaseModel, table=True):
     """User model for storing user accounts.
@@ -50,6 +52,7 @@ class User(BaseModel, table=True):
     )
     sessions: List["Session"] = Relationship(back_populates="user")
     role: UserRole = UserRole.LEARNER
+
     notification_preference: Optional["NotificationPreference"] = Relationship(
         back_populates="user",
         sa_relationship_kwargs={
@@ -72,3 +75,4 @@ class User(BaseModel, table=True):
 # Avoid circular imports
 from app.models.session import Session  # noqa: E402
 from app.models.notification_preference import NotificationPreference  # noqa: E402
+

@@ -1,51 +1,36 @@
 import streamlit as st
+from pathlib import Path
 
 from components.styles import page_header
 
 
 def show_guide():
 
+    # Only admins can access this page
+    if st.session_state.get("role", "").upper() != "ADMIN":
+        st.error("You are not authorized to view this page.")
+        return
+
     page_header(
-        "📘", "Guide",
-        subtitle="What each page is for, and how the pieces fit together.",
-        eyebrow="Admin",
+        "📘",
+        "Administrator Guide",
+        subtitle="System administration and operational documentation.",
+        eyebrow="Documentation",
     )
 
-    sections = [
-        ("📊 Dashboard", "Tickets and At-Risk Nudges", (
-            "The **Tickets** tab lists escalations awaiting review. The "
-            "**At-Risk Nudges** tab shows learners flagged by the risk model, "
-            "why they were flagged, and the trend over time."
-        )),
-        ("🎫 Escalations", "Full ticket detail", (
-            "The complete list of escalated conversations, with the "
-            "learner's problem, context, and the assistant's suggested next "
-            "step for each one."
-        )),
-        ("📈 Analytics", "Support metrics", (
-            "Aggregate support volume, escalation rate, and resolution time "
-            "across all learners and programs."
-        )),
-        ("👥 Users", "Manage accounts", (
-            "Change a user's role, group, and project assignment. Changes "
-            "only take effect once you press Update on that row."
-        )),
-    ]
+    # Repository root
+    repo_root = Path(__file__).resolve().parents[2]
 
-    for title, subtitle, body in sections:
-        with st.container(border=True):
-            st.subheader(title)
-            st.caption(subtitle)
-            st.write(body)
+    # docs/admin-guide.md
+    guide_path = repo_root / "docs" / "admin-guide.md"
 
-    st.write("")
+    if guide_path.exists():
 
-    with st.container(border=True):
-        st.subheader("🔔 Notifications vs. Reminders")
-        st.write(
-            "The bell icon in the sidebar shows a live count of **open "
-            "tickets** — it's a notification, not a setting. **Reminders** "
-            "is a separate page that controls a user's own reminder "
-            "*preferences* (session reminders, deadline reminders, nudges) "
-            "— it doesn't show live alerts."
+        with open(guide_path, "r", encoding="utf-8") as f:
+            st.markdown(f.read())
+
+    else:
+
+        st.error(
+            f"Admin guide not found.\n\nExpected location:\n{guide_path}"
         )

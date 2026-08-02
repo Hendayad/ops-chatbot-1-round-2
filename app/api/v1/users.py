@@ -20,7 +20,10 @@ async def get_users(
     current_user: User = Depends(get_current_user)
 ):
 
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in (
+        UserRole.ADMIN,
+        UserRole.PROGRAM_LEAD,
+    ):
         raise HTTPException(
             status_code=403,
             detail="Admin access required"
@@ -64,7 +67,7 @@ async def update_user_role(
 
     new_role = data.get("role", "").strip().lower()
 
-    if new_role not in ["learner", "admin"]:
+    if new_role not in ["learner", "admin","program_lead"]:
         raise HTTPException(
             status_code=400,
             detail="Invalid role",
@@ -107,7 +110,12 @@ async def update_user_role(
                 )
 
         user.role = UserRole(new_role)
-        user.is_ops = (user.role == UserRole.ADMIN)
+        user.is_ops = (
+            user.role in (
+                UserRole.ADMIN,
+                UserRole.PROGRAM_LEAD,
+            )
+        )
 
         session.add(user)
         session.commit()
