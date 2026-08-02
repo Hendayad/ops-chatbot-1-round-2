@@ -33,7 +33,7 @@ from app.schemas.auth import (
     UserCreate,
     UserResponse,
 )
-from app.services.database import DatabaseService
+from app.services.database import database_service
 from app.utils.auth import (
     create_access_token,
     verify_token,
@@ -46,7 +46,7 @@ from app.utils.sanitization import (
 
 router = APIRouter()
 security = HTTPBearer()
-db_service = DatabaseService()
+db_service = database_service  # shared singleton -- do not construct a new pool here
 
 
 async def get_current_user(
@@ -265,13 +265,7 @@ async def login(
             )
 
         token = create_access_token(str(user.id))
-
-        return TokenResponse(
-            access_token=token.access_token,
-            token_type="bearer",
-            expires_at=token.expires_at,
-            role=user.role.value
-        )
+        return TokenResponse(access_token=token.access_token, token_type="bearer", expires_at=token.expires_at)
     except ValueError as ve:
         logger.exception("login_validation_failed", error=str(ve))
         raise HTTPException(status_code=422, detail=str(ve))

@@ -8,7 +8,7 @@ from app.schemas.notification_preferences import (
     NotificationPreferenceResponse,
     NotificationPreferenceUpdate,
 )
-from app.services.database import DatabaseService
+from app.services.database import database_service
 from app.prefs.model import (
     get_preferences,
     update_preferences,
@@ -16,7 +16,7 @@ from app.prefs.model import (
 
 router = APIRouter()
 
-db_service = DatabaseService()
+db_service = database_service  # shared singleton -- do not construct a new pool here
 
 
 @router.get(
