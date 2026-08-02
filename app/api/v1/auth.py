@@ -33,7 +33,7 @@ from app.schemas.auth import (
     UserCreate,
     UserResponse,
 )
-from app.services.database import DatabaseService
+from app.services.database import database_service
 from app.utils.auth import (
     create_access_token,
     verify_token,
@@ -46,7 +46,7 @@ from app.utils.sanitization import (
 
 router = APIRouter()
 security = HTTPBearer()
-db_service = DatabaseService()
+db_service = database_service  # shared singleton -- do not construct a new pool here
 
 
 async def get_current_user(

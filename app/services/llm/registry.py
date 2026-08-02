@@ -27,43 +27,54 @@ class LLMRegistry:
     methods to retrieve them by name with optional argument overrides.
     """
 
+    # NOTE: these must be model IDs the team's LiteLLM virtual key is
+    # actually allowed to call -- confirmed via `GET /v1/models` against
+    # the proxy that this key's team is restricted to `gemini/*` only, so
+    # the previous gpt-5-family entries here 403'd on every single request
+    # ("team not allowed to access model ... can only access
+    # models=['gemini/*']").
+    #
+    # Also: the proxy's /v1/models list includes several *dated* Gemini
+    # model IDs (gemini-2.0-flash, gemini-2.5-flash, gemini-2.5-flash-lite,
+    # gemini-2.5-pro) that Google has since deprecated upstream --
+    # confirmed by hitting all four and getting back
+    # `litellm.NotFoundError: ... "This model models/X is no longer
+    # available[...]"` for every one of them, even though the proxy still
+    # lists them. Switched to Google's rolling `-latest` aliases (which
+    # Google repoints at the current model instead of deprecating), plus
+    # one pinned `-001` build as a fourth, independent fallback.
     LLMS: List[Dict[str, Any]] = [
         {
-            "name": "gpt-5-mini",
+            "name": "gemini/gemini-flash-latest",
             "llm": ChatOpenAI(
-                model="gpt-5-mini",
+                model="gemini/gemini-flash-latest",
                 api_key=_API_KEY,
                 model_kwargs=_TOKEN_LIMIT,
-                reasoning={"effort": "low"},
             ),
         },
         {
-            "name": "gpt-5.4",
+            "name": "gemini/gemini-2.0-flash-001",
             "llm": ChatOpenAI(
-                model="gpt-5",
+                model="gemini/gemini-2.0-flash-001",
                 api_key=_API_KEY,
                 model_kwargs=_TOKEN_LIMIT,
-                reasoning={"effort": "medium"},
             ),
         },
         {
-            "name": "gpt-5.4-nano",
+            "name": "gemini/gemini-flash-lite-latest",
             "llm": ChatOpenAI(
-                model="gpt-5.4-nano",
+                model="gemini/gemini-flash-lite-latest",
                 api_key=_API_KEY,
                 model_kwargs=_TOKEN_LIMIT,
-                reasoning={"effort": "low"},
             ),
         },
         {
-            "name": "gpt-5",
+            "name": "gemini/gemini-pro-latest",
             "llm": ChatOpenAI(
-                model="gpt-5",
+                model="gemini/gemini-pro-latest",
                 api_key=_API_KEY,
                 model_kwargs=_TOKEN_LIMIT,
                 top_p=0.95 if settings.ENVIRONMENT == Environment.PRODUCTION else 0.8,
-                presence_penalty=0.1 if settings.ENVIRONMENT == Environment.PRODUCTION else 0.0,
-                frequency_penalty=0.1 if settings.ENVIRONMENT == Environment.PRODUCTION else 0.0,
             ),
         },
     ]
