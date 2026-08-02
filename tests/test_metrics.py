@@ -19,8 +19,11 @@ from app.metrics.kpis import (
     ALERT_TYPES,
     AT_RISK_ISSUES,
     CONNECTOR_SYNC_FAILURES,
+    DEFAULT_COHORT_LABEL,
     DEFLECTION_RATE,
     FIRST_RESPONSE_TIME,
+    RESOLUTION_TIME,
+    track_resolution_time,
     update_alert_metrics,
     update_at_risk_metrics,
 )
@@ -159,6 +162,55 @@ def test_update_at_risk_metrics_publishes_per_cohort_gauge():
     update_at_risk_metrics({"by_cohort": {"cohort-a": {"high": 3}}})
 
     assert AT_RISK_ISSUES.labels(cohort="cohort-a", risk_level="high")._value.get() == 3
+
+
+# --- Resolution time histogram (F3.3 / NFR-6) ---
+
+
+def _resolution_bucket_counts(cohort):
+    """Return {bucket_upper_bound: cumulative_count} for the resolution-time histogram, for one cohort.
+
+    Reads via REGISTRY.collect() (the public introspection API) rather than
+    guessing the exposition-format string for each "le" label, so this stays
+    correct regardless of how prometheus_client formats bucket boundaries.
+    """
+    counts = {}
+    for family in REGISTRY.collect():
+        if family.name != "ops_resolution_time_seconds":
+            continue
+        for sample in family.samples:
+            if sample.name == "ops_resolution_time_seconds_bucket" and sample.labels.get("cohort") == cohort:
+                counts[float(sample.labels["le"])] = sample.value
+    return counts
+
+
+def test_track_resolution_time_observes_into_the_histogram():
+    """A resolution-time observation should increase the histogram's sum by that amount.
+
+    Mirrors the FIRST_RESPONSE_TIME sum-based check below -- confirms the
+    histogram is actually written to, not just defined (see module docstring).
+    """
+    before = RESOLUTION_TIME.labels(cohort=DEFAULT_COHORT_LABEL)._sum.get()
+
+    track_resolution_time(DEFAULT_COHORT_LABEL, 450.0)
+
+    assert RESOLUTION_TIME.labels(cohort=DEFAULT_COHORT_LABEL)._sum.get() == before + 450.0
+
+
+def test_track_resolution_time_places_the_observation_in_the_correct_bucket():
+    """A 450s ticket should count toward the 600s-and-up buckets but not the 300s-and-under bucket.
+
+    Histogram buckets are cumulative ("le" = less-than-or-equal), so a 450s
+    observation increments every bucket boundary >= 450 and none below it.
+    """
+    before = _resolution_bucket_counts(DEFAULT_COHORT_LABEL)
+
+    track_resolution_time(DEFAULT_COHORT_LABEL, 450.0)
+
+    after = _resolution_bucket_counts(DEFAULT_COHORT_LABEL)
+
+    assert after[600.0] == before.get(600.0, 0.0) + 1
+    assert after[300.0] == before.get(300.0, 0.0)
 
 
 # --- Instrumentation: every metric has a runtime writer ---
