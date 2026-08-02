@@ -80,7 +80,34 @@ async def update_user_role(
                 detail="User not found",
             )
 
+        # Prevent self-demotion
+        if (
+            user.id == current_user.id
+            and user.role == UserRole.ADMIN
+            and new_role == "learner"
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="You cannot remove your own admin role.",
+            )
+
+        # Prevent removing the last admin
+        if (
+            user.role == UserRole.ADMIN
+            and new_role == "learner"
+        ):
+            admins = session.exec(
+                select(User).where(User.role == UserRole.ADMIN)
+            ).all()
+
+            if len(admins) == 1:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Cannot demote the last remaining admin.",
+                )
+
         user.role = UserRole(new_role)
+        user.is_ops = (user.role == UserRole.ADMIN)
 
         session.add(user)
         session.commit()

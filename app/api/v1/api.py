@@ -24,12 +24,9 @@ api_router = APIRouter()
 api_router.include_router(kb_admin_router, prefix="/kb", tags=["KB Admin"])
 api_router.include_router(auth_router, prefix="/auth", tags=["Auth"])
 api_router.include_router(chatbot_router, prefix="/chatbot", tags=["Chatbot"])
-api_router.include_router(
-    tickets_router,
-    prefix="/tickets",
-    tags=["Ops Tickets"],
-)
+api_router.include_router(tickets_router, prefix="/tickets", tags=["Ops Tickets"])
 api_router.include_router(dashboards_router, prefix="/dashboards", tags=["Dashboards"])
+api_router.include_router(atrisk_router, prefix="/atrisk", tags=["At-Risk"])
 api_router.include_router(notification_preferences_router, prefix="/notifications", tags=["Notification Preferences"])
 api_router.include_router(
     users.router,

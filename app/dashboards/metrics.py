@@ -26,28 +26,29 @@ def get_support_volume(session, start: datetime, end: datetime) -> list[dict]:
     return [{"date": row.date, "count": row.count} for row in results]
 
 
-def get_ticket_count(session, start: datetime, end: datetime) -> int:
-    """Return the total number of escalation tickets created between start and end."""
+def get_escalated_session_count(session, start: datetime, end: datetime) -> int:
+    """Return the number of unique sessions that produced at least one escalation."""
+
     statement = (
-        select(func.count())
-        .select_from(EscalationTicket)
+        select(func.count(func.distinct(EscalationTicket.session_id)))
         .where(EscalationTicket.created_at >= start)
         .where(EscalationTicket.created_at <= end)
+        .where(EscalationTicket.session_id.is_not(None))
     )
+
     return session.exec(statement).one()
-
-
 def get_escalation_rate(session, start: datetime, end: datetime) -> float:
-    """Return the fraction of sessions that resulted in an escalation ticket."""
-    try:
-        daily_counts = get_support_volume(session, start, end)
-        sum_counts = sum(row["count"] for row in daily_counts)
-        total_tickets = get_ticket_count(session, start, end)
-        escalation_rate = total_tickets / sum_counts
-        return escalation_rate
-    except ZeroDivisionError:
+    """Return the percentage of sessions that resulted in an escalation."""
+
+    daily_counts = get_support_volume(session, start, end)
+    total_sessions = sum(row["count"] for row in daily_counts)
+
+    if total_sessions == 0:
         return 0.0
 
+    escalated_sessions = get_escalated_session_count(session, start, end)
+
+    return escalated_sessions / total_sessions
 
 def get_resolution_time_estimate(session, start: datetime, end: datetime) -> list[dict]:
     """Estimate resolution time per ticket, as an approximation only.

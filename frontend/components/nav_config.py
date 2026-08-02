@@ -3,7 +3,7 @@ PAGE_ICONS = {
     "Chat Viewer": "💬",
     "Escalations": "🎫",
     "Knowledge Base": "📚",
-    "Reminders": "🔔",
+    "Reminders": "⏰",
     "Analytics": "📈",
     "Settings": "⚙️",
     "Guide": "📘",

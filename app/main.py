@@ -1,13 +1,12 @@
 """This file contains the main application entry point."""
 
 from contextlib import asynccontextmanager
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 from app.scheduler.scheduler import (
     start_scheduler,
     stop_scheduler,
 )
-
 from dotenv import load_dotenv
 from fastapi import (
     FastAPI,

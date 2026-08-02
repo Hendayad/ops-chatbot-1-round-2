@@ -29,6 +29,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.atrisk.detector import DetectionResult, run_detector
 from app.atrisk.nudges import NoOpNotificationSender, NotificationSender, send_at_risk_nudges
+from app.atrisk.progress_store import list_all_learner_progress
 from app.atrisk.state import AtRiskAggregate, get_aggregate, upsert_at_risk_state
 from app.core.logging import logger
 from app.notifications.learner_chat_channel import LearnerChatChannel
@@ -133,6 +134,21 @@ def run_at_risk_job(
         nudges_sent=summary.nudges_sent,
     )
     return summary
+
+
+def run_scheduled_at_risk_job() -> AtRiskJobResult:
+    """Zero-argument entry point for the job scheduler (app/scheduler/scheduler.py).
+
+    Unlike the __main__ block below (a manual/demo entry point), this is
+    what actually runs unattended in production once registered with the
+    scheduler: the real DB-backed progress provider
+    (app.atrisk.progress_store.list_all_learner_progress) and the real
+    in-chat nudge channel (LearnerChatChannel). Safe to schedule even
+    before any real progress data has been ingested -- with an empty
+    progress table it evaluates zero learners and does nothing, exactly
+    like a manual run does today.
+    """
+    return run_at_risk_job(progress_provider=list_all_learner_progress, sender=LearnerChatChannel())
 
 
 def _no_progress_configured() -> list[LearnerProgress]:

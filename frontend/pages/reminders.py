@@ -7,7 +7,7 @@ from components.styles import page_header
 
 def show_reminders():
     page_header(
-        "🔔",
+        "⏰",
         "Reminders",
         subtitle="Your reminders.",
     )

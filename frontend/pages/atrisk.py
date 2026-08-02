@@ -5,7 +5,7 @@ import plotly.express as px
 
 from components.styles import badge
 
-BASE_URL = "http://127.0.0.1:8000/api/v1"
+from api.config import BASE_URL
 BLUE = "#2A63E4"
 
 # (backend field, display label) for the risk-reasons breakdown

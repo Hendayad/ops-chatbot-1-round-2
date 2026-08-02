@@ -6,7 +6,8 @@ stay in sync with the running app configuration.
 
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import create_engine, pool
+from sqlalchemy.engine import URL
 from sqlmodel import SQLModel
 
 from alembic import context
@@ -15,6 +16,8 @@ from app.models.session import Session  # noqa: F401
 from app.models.thread import Thread  # noqa: F401
 from app.models.user import User  # noqa: F401
 from app.models.notification import NotificationRecord  # noqa: F401
+from app.atrisk.state import AtRiskStateRecord  # noqa: F401
+from app.atrisk.progress_store import LearnerProgressRecord  # noqa: F401
 from app.models.notification_preference import NotificationPreference  # noqa: F401
 from app.models.escalation_ticket import EscalationTicket  # noqa: F401
 from app.models.reminder_event import ReminderEvent  # noqa: F401
@@ -28,12 +31,19 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Build the database URL from app settings
-DATABASE_URL = (
-    f"postgresql://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}"
-    f"@{settings.POSTGRES_HOST}:{settings.POSTGRES_PORT}/{settings.POSTGRES_DB}"
+# Build the database URL from app settings. Built via URL.create() (not an
+# f-string) so SQLAlchemy handles percent-encoding of any special characters
+# in the username or password -- a raw f-string breaks the moment a password
+# contains an unescaped "@", "#", "?", "%", etc. (as hosted-Postgres generated
+# passwords, e.g. Supabase's, commonly do).
+DATABASE_URL = URL.create(
+    "postgresql",
+    username=settings.POSTGRES_USER,
+    password=settings.POSTGRES_PASSWORD,
+    host=settings.POSTGRES_HOST,
+    port=settings.POSTGRES_PORT,
+    database=settings.POSTGRES_DB,
 )
-config.set_main_option("sqlalchemy.url", DATABASE_URL)
 
 # Point Alembic at our SQLModel metadata for autogenerate support
 target_metadata = SQLModel.metadata
@@ -62,9 +72,8 @@ def run_migrations_offline() -> None:
 
     Emits SQL to stdout instead of executing against the database.
     """
-    url = config.get_main_option("sqlalchemy.url")
     context.configure(
-        url=url,
+        url=DATABASE_URL.render_as_string(hide_password=False),
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
@@ -80,11 +89,7 @@ def run_migrations_online() -> None:
 
     Creates an engine and runs migrations against the live database.
     """
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
+    connectable = create_engine(DATABASE_URL, poolclass=pool.NullPool)
 
     with connectable.connect() as connection:
         context.configure(
