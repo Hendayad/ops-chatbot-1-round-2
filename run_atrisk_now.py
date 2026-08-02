@@ -1,5 +1,4 @@
-"""Manually trigger the at-risk job on demand (rather than waiting for the
-24h scheduler interval) and report exactly where any nudge landed.
+"""Manually trigger the at-risk job on demand (rather than waiting for the 24h scheduler interval) and report exactly where any nudge landed.
 
 Safe to run repeatedly -- the job is idempotent by design (see
 app/jobs/atrisk_job.py's module docstring): re-running for the same UTC
