@@ -11,7 +11,7 @@ from typing import NoReturn
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
 from pydantic import BaseModel, Field
 
-from app.api.v1.auth import get_current_user
+from app.api.v1.auth import get_current_ops_user
 from app.core.config import settings
 from app.core.limiter import limiter
 from app.core.logging import logger
@@ -139,11 +139,11 @@ async def list_ops_tickets(
     ticket_status: TicketStatus | None = Query(default=None, alias="status"),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=100),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_ops_user),
 ) -> TicketListResponse:
     """List escalation tickets, optionally filtered by status.
 
-    Authentication is enforced by ``get_current_user``. The service applies the
+    Authentication is enforced by ``get_current_ops_user``. The service applies the
     actual filtering and pagination so the API does not depend on database
     implementation details.
     """
@@ -182,7 +182,7 @@ async def view_ops_ticket(
         max_length=80,
         pattern=r"^esc_[A-Za-z0-9_-]+$",
     ),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_ops_user),
 ) -> TicketDetailResponse:
     """Return one escalation ticket by its internal ticket ID."""
     try:
@@ -207,7 +207,7 @@ async def resolve_ops_ticket(
         max_length=80,
         pattern=r"^esc_[A-Za-z0-9_-]+$",
     ),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_ops_user),
 ) -> TicketDetailResponse:
     """Mark a ticket as resolved and return the updated record.
 

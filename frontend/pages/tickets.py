@@ -158,4 +158,6 @@ def show_tickets():
 
     except Exception as e:
 
-        st.error(f"Couldn't load tickets: {e}")
+        st.error(
+            f"Couldn't load tickets: {e}"
+        )

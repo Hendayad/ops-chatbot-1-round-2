@@ -46,6 +46,7 @@ correctly fail to resolve rather than silently doing nothing.
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Callable, Optional
 
 from langchain_core.messages import AIMessage

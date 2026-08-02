@@ -21,6 +21,7 @@ from app.atrisk.progress_store import LearnerProgressRecord  # noqa: F401
 from app.models.notification_preference import NotificationPreference  # noqa: F401
 from app.models.escalation_ticket import EscalationTicket  # noqa: F401
 from app.models.reminder_event import ReminderEvent  # noqa: F401
+from app.atrisk.state import AtRiskStateRecord  # noqa: F401
 from app.models.user_notification import UserNotification
 
 # Alembic Config object
