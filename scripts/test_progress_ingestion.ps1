@@ -4,12 +4,17 @@
 # snapshots (one healthy, one at-risk) and prints what came back.
 # Safe to run repeatedly -- each run uses a fresh disposable account and
 # fresh synthetic learner_ids, so it never collides with real data.
+# Local-only dev/verification script -- do not point $base at a deployed environment.
 
 $ErrorActionPreference = "Stop"
 $base = "http://localhost:8000"
 $stamp = Get-Date -Format "yyyyMMddHHmmss"
 $email = "progress-test-$stamp@example.com"
-$password = "TestPass123!"
+$password = $env:OPS_CHATBOT_TEST_PASSWORD
+if (-not $password) {
+    Write-Error "Set `$env:OPS_CHATBOT_TEST_PASSWORD before running this script (no default -- avoids a real credential living in git history)."
+    exit 1
+}
 $learnerAtRisk = "test-atrisk-$stamp"
 $learnerHealthy = "test-healthy-$stamp"
 

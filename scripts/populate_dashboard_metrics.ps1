@@ -6,12 +6,17 @@
 # Grafana shows "No data" until this runs at least once. Any authenticated
 # user works -- no ops privileges required, so the throwaway test account
 # is fine here.
+# Local-only dev/verification script -- do not point $base at a deployed environment.
 
 $ErrorActionPreference = "Stop"
 $base = "http://localhost:8000"
 $stamp = Get-Date -Format "yyyyMMddHHmmss"
 $email = "metrics-poke-$stamp@example.com"
-$password = "TestPass123!"
+$password = $env:OPS_CHATBOT_TEST_PASSWORD
+if (-not $password) {
+    Write-Error "Set `$env:OPS_CHATBOT_TEST_PASSWORD before running this script (no default -- avoids a real credential living in git history)."
+    exit 1
+}
 
 function Show-ErrorBody($err) {
     if ($err.ErrorDetails -and $err.ErrorDetails.Message) {

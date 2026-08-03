@@ -4,6 +4,8 @@ Safe to run repeatedly -- the job is idempotent by design (see
 app/jobs/atrisk_job.py's module docstring): re-running for the same UTC
 day upserts state instead of duplicating it, and nudge delivery is
 deduplicated by dedup_key.
+
+Local-only ops utility -- do not run against a deployed environment without confirming the target DB first.
 """
 
 from sqlalchemy import text

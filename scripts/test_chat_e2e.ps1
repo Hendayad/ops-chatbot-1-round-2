@@ -2,12 +2,17 @@
 # session, send a chat message, print the AI's reply -- no manual copy-paste
 # of tokens through /docs required. Safe to run repeatedly; each run creates
 # a brand-new disposable test account so it never collides with a real one.
+# Local-only dev/verification script -- do not point $base at a deployed environment.
 
 $ErrorActionPreference = "Stop"
 $base = "http://localhost:8000"
 $stamp = Get-Date -Format "yyyyMMddHHmmss"
 $email = "e2e-test-$stamp@example.com"
-$password = "TestPass123!"
+$password = $env:OPS_CHATBOT_TEST_PASSWORD
+if (-not $password) {
+    Write-Error "Set `$env:OPS_CHATBOT_TEST_PASSWORD before running this script (no default -- avoids a real credential living in git history)."
+    exit 1
+}
 
 function Show-ErrorBody($err) {
     if ($err.ErrorDetails -and $err.ErrorDetails.Message) {

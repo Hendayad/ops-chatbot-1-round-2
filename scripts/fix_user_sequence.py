@@ -13,6 +13,8 @@ constraint "user_pkey".
 Fix: point the sequence at max(id) so future nextval() calls resume past
 whatever's actually in the table. Safe to run any time, including when
 there's no desync (it's a no-op then).
+
+Local-only ops utility -- do not run against a deployed environment without confirming the target DB first.
 """
 
 from sqlalchemy import text
