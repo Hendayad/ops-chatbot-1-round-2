@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends
-from sqlmodel import select
+from sqlmodel import select, col
+from sqlalchemy import asc
 
 from app.api.v1.auth import get_current_user
 from app.models.reminder_event import ReminderEvent
@@ -23,11 +24,9 @@ async def get_my_reminders(
         preferences = session.exec(
             select(NotificationPreference)
             .where(
-                NotificationPreference.user_id == str(current_user.id),
-                ReminderEvent.type != NotificationType.FEEDBACK_FOLLOWUP
+                NotificationPreference.user_id == str(current_user.id)
             )
         ).first()
-
 
         # No preferences found -> return reminders normally
         if preferences:
@@ -36,15 +35,14 @@ async def get_my_reminders(
             if preferences.opted_out:
                 return []
 
-
         reminders = session.exec(
             select(ReminderEvent)
             .where(
-                ReminderEvent.recipient_id == str(current_user.id)
+                ReminderEvent.recipient_id == str(current_user.id),
+                ReminderEvent.type != NotificationType.FEEDBACK_FOLLOWUP
             )
-            .order_by(ReminderEvent.due_at.asc())
+            .order_by(asc(col(ReminderEvent.due_at)))
         ).all()
-
 
         # Filter individual reminder types
         if preferences:
@@ -54,7 +52,6 @@ async def get_my_reminders(
                     r for r in reminders
                     if r.type != NotificationType.SESSION_REMINDER
                 ]
-
 
             if not preferences.deadline_reminders:
                 reminders = [
@@ -68,9 +65,7 @@ async def get_my_reminders(
             if not preferences.nudges:
                 reminders = [
                     r for r in reminders
-                    if r.type != NotificationType.NUDGE
+                    if r.type != NotificationType.AT_RISK_NUDGE
                 ]
-            
-
 
     return reminders

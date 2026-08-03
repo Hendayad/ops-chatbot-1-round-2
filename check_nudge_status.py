@@ -13,25 +13,27 @@ recent first, so we can tell which case we're in without guessing.
 
 Usage:
     uv run python check_nudge_status.py
+
+Needed purely for its import side effect.
+
+User.notification_preference is a string-referenced relationship
+("NotificationPreference"). SQLAlchemy resolves that relationship only after
+NotificationPreference has been imported.
+
+Without this import, mapper configuration fails with:
+
+InvalidRequestError: failed to locate a name ('NotificationPreference')
+
+This script doesn't otherwise import NotificationPreference, so we import it
+here intentionally.
 """
-
 from __future__ import annotations
-
-from app.models.notification import NotificationRecord
-
-# Needed purely for its import side effect: User.notification_preference is a
-# string-referenced relationship("NotificationPreference"), and SQLAlchemy
-# resolves that name against whatever classes have been imported into this
-# process by the time the first query configures the shared mapper registry.
-# app/services/database.py doesn't pull this in, and neither does anything
-# else this script imports -- so without this, any query here blows up with
-# "InvalidRequestError: ... failed to locate a name ('NotificationPreference')"
-# the moment SQLAlchemy configures User's mapper. alembic/env.py carries the
-# same explicit import for the same reason.
 from app.models.notification_preference import NotificationPreference  # noqa: F401
 from app.schemas.notification import NotificationType
 from app.services.database import database_service
 from sqlmodel import select
+from app.models.notification import NotificationRecord
+
 
 
 def main() -> None:

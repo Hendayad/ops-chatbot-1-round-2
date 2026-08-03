@@ -15,10 +15,12 @@ inject in-memory fakes. See ``tests/test_ingestion.py``.
 
 from typing import (
     Protocol,
+    cast,
     runtime_checkable,
 )
 
 from sqlalchemy import (
+    CursorResult,
     Engine,
     text,
 )
@@ -89,6 +91,26 @@ class ChunkRepository(Protocol):
             source_id: Stable identity of the material being written.
             chunks: The new chunks for the source (may be empty).
             embeddings: One vector per chunk, aligned by index.
+        """
+        ...
+
+    def list_sources(self) -> list[dict]:
+        """List all distinct sources currently stored, with freshness info.
+
+        Returns:
+            One dict per source (not per chunk), including at least
+            ``source_id``, ``content_hash``, and a freshness timestamp.
+        """
+        ...
+
+    def retire_source(self, source_id: str) -> bool:
+        """Delete all chunks belonging to a source.
+
+        Args:
+            source_id: Stable identity of the material to retire.
+
+        Returns:
+            True if the source existed and was deleted, False otherwise.
         """
         ...
 
@@ -382,6 +404,45 @@ class PgVectorChunkRepository:
                     },
                 )
             session.commit()
+
+    def list_sources(self) -> list[dict]:
+        """Return one row per distinct source, with its freshness info."""
+        with Session(self._engine) as session:
+            rows = session.execute(
+                text(
+                    f"""
+                    SELECT source_id,
+                           MAX(content_hash) AS content_hash,
+                           MAX(created_at) AS last_ingested_at,
+                           COUNT(*) AS chunk_count
+                    FROM {_TABLE_NAME}
+                    GROUP BY source_id
+                    ORDER BY source_id
+                    """
+                )
+            ).all()
+        return [
+            {
+                "source_id": row.source_id,
+                "content_hash": row.content_hash,
+                "last_ingested_at": row.last_ingested_at,
+                "chunk_count": row.chunk_count,
+            }
+            for row in rows
+        ]
+
+    def retire_source(self, source_id: str) -> bool:
+        """Delete all chunks for a source; return whether anything was deleted."""
+        with Session(self._engine) as session:
+            result = cast(
+                CursorResult,
+                session.execute(
+                    text(f"DELETE FROM {_TABLE_NAME} WHERE source_id = :sid"),
+                    {"sid": source_id},
+                ),
+            )
+            session.commit()
+        return (result.rowcount or 0) > 0
 
 
 def build_default_store() -> KBStore:

@@ -32,6 +32,7 @@ fake_user = User(
     id=1,
     username="tester",
     email="tester@example.com",
+    hashed_password="fake_hashed_password",
 )
 
 
@@ -177,7 +178,7 @@ def test_kb_retire_requires_auth():
 def test_dashboard_metrics_rate_limit():
     """Dashboard endpoint should eventually return 429."""
     app.dependency_overrides[get_current_user] = lambda: fake_user
-
+    response = client.get("/api/v1/dashboards/metrics")
     try:
         for _ in range(31):  # dashboard limit is 30/min
             response = client.get("/api/v1/dashboards/metrics")
@@ -190,7 +191,7 @@ def test_dashboard_metrics_rate_limit():
 def test_kb_reingest_rate_limit():
     """KB re-ingest endpoint should eventually return 429."""
     app.dependency_overrides[get_current_user] = lambda: fake_user
-
+    response = client.post("/api/v1/kb/reingest",json=[],)
     try:
         for _ in range(21):  # kb_admin limit is 20/min
             response = client.post(

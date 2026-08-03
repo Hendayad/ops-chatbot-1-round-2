@@ -20,25 +20,31 @@ from app.risk.signals import (
     compute_signals,
 )
 from app.schemas.progress import FeedbackEntry, LearnerProgress
+from typing import Any
 
 NOW = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
 
 
-def make_progress(**overrides) -> LearnerProgress:
-    """Build a healthy baseline LearnerProgress, overridden per-test."""
-    defaults = dict(
-        learner_id="learner-1",
-        cohort_id="cohort-a",
-        as_of=NOW,
-        total_tasks=10,
-        completed_tasks=8,
-        missed_deadlines=0,
-        last_active_at=NOW - timedelta(days=1),
-        recent_feedback=[FeedbackEntry(score=4.0, submitted_at=NOW - timedelta(days=1))],
-    )
-    defaults.update(overrides)
-    return LearnerProgress(**defaults)
+def make_progress(**overrides: Any) -> LearnerProgress:
+    defaults: dict[str, Any] = {
+        "learner_id": "learner-1",
+        "cohort_id": "cohort-a",
+        "as_of": NOW,
+        "total_tasks": 10,
+        "completed_tasks": 8,
+        "missed_deadlines": 0,
+        "last_active_at": NOW - timedelta(days=1),
+        "recent_feedback": [
+            FeedbackEntry(
+                score=4.0,
+                submitted_at=NOW,
+            )
+        ],
+    }
 
+    defaults.update(overrides)
+
+    return LearnerProgress(**defaults)
 
 @pytest.fixture
 def thresholds() -> RiskThresholds:
@@ -86,6 +92,7 @@ class TestLearnerProgressComputedFields:
 
     def test_naive_datetimes_normalized_to_utc(self):
         progress = make_progress(last_active_at=datetime(2026, 7, 10, 0, 0))
+        assert progress.last_active_at is not None
         assert progress.last_active_at.tzinfo is not None
 
     def test_completed_cannot_exceed_total(self):

@@ -5,6 +5,7 @@ import re
 from collections.abc import Sequence
 from typing import Protocol
 
+
 from langchain_core.messages import (
     BaseMessage,
     HumanMessage,
@@ -53,18 +54,32 @@ _CITATION_PATTERN = re.compile(r"S[1-9]\d*")
 _INLINE_CITATION_PATTERN = re.compile(r"\[(S[1-9]\d*)\]")
 
 
+
 class GroundingChunk(Protocol):
-    """Structural type required from a retrieved knowledge chunk."""
 
-    source_id: str
-    title: str
-    source: str
-    source_type: str
-    cohort: str
-    chunk_index: int
-    content: str
-    citation_id: str
+    @property
+    def citation_id(self) -> str: ...
 
+    @property
+    def source_id(self) -> str: ...
+
+    @property
+    def title(self) -> str: ...
+
+    @property
+    def source(self) -> str: ...
+
+    @property
+    def source_type(self) -> str: ...
+
+    @property
+    def cohort(self) -> str: ...
+
+    @property
+    def chunk_index(self) -> int: ...
+
+    @property
+    def content(self) -> str: ...
 
 class GroundedAnswer(BaseModel):
     """Structured LLM output for a supported answer or insufficient context."""

@@ -11,12 +11,12 @@ from typing import NoReturn
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
 from pydantic import BaseModel, Field
 
-from app.api.v1.auth import get_current_ops_user
 from app.core.config import settings
 from app.core.limiter import limiter
 from app.core.logging import logger
 from app.models.escalation_ticket import EscalationTicket
 from app.models.user import User
+from app.api.v1.auth import get_current_ops_user
 from app.schemas.base import BaseResponse
 from app.schemas.escalation import EscalationSource, TicketStatus
 from app.tickets.service import (

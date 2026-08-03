@@ -12,7 +12,6 @@ from app.core.logging import logger
 from app.dashboards.metrics import get_support_metrics
 from app.models.user import User
 from app.services.database import DatabaseService
-from fastapi import HTTPException
 
 
 router = APIRouter()

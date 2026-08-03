@@ -1,7 +1,5 @@
 from sqlalchemy import Column
 from sqlalchemy import Boolean
-from sqlalchemy import DateTime
-from sqlalchemy.sql import func
 from sqlmodel import Field
 
 from app.models.base import BaseModel
@@ -10,7 +8,7 @@ from app.models.base import BaseModel
 class UserNotification(BaseModel, table=True):
     """Notifications shown in the learner notification bell."""
 
-    __tablename__ = "user_notification"
+    __tablename__ = "user_notification" # type: ignore[assignment]
 
     id: int | None = Field(default=None, primary_key=True)
 

@@ -17,6 +17,8 @@ import time
 from html import escape
 from collections.abc import Mapping, Sequence
 from typing import Any, Literal, cast
+from app.graph.state import SessionGraphState
+
 
 from langchain_core.messages import AIMessage
 from langchain_core.runnables.config import RunnableConfig
@@ -99,7 +101,7 @@ def _normalise_text(value: Any) -> str:
     return ""
 
 
-def _state_messages(state: GraphState | Mapping[str, Any]) -> Sequence[Any]:
+def _state_messages(state: GraphState | SessionGraphState | Mapping[str, Any]) -> Sequence[Any]:
     """Read messages from either the Pydantic graph state or a test mapping."""
     if isinstance(state, Mapping):
         messages = state.get("messages", [])
@@ -111,7 +113,7 @@ def _state_messages(state: GraphState | Mapping[str, Any]) -> Sequence[Any]:
     return []
 
 
-def extract_latest_question(state: GraphState | Mapping[str, Any]) -> str:
+def extract_latest_question(state: GraphState | SessionGraphState | Mapping[str, Any]) -> str:
     """Return the most recent learner/user message from the graph state."""
     for message in reversed(_state_messages(state)):
         if isinstance(message, Mapping):
@@ -139,7 +141,7 @@ def _mapping_value(container: Mapping[str, Any] | None, *keys: str) -> str:
 
 
 def resolve_cohort(
-    state: GraphState | Mapping[str, Any],
+    state: GraphState | SessionGraphState | Mapping[str, Any],
     config: RunnableConfig | None = None,
     *,
     explicit_cohort: str | None = None,
@@ -359,7 +361,7 @@ async def generate_grounded_answer(
 
 
 async def grounded_answer(
-    state: GraphState | Mapping[str, Any],
+    state: GraphState | SessionGraphState | Mapping[str, Any],
     config: RunnableConfig | None = None,
     *,
     cohort: str | None = None,

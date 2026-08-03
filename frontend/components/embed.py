@@ -10,9 +10,11 @@ API_BASE = "http://127.0.0.1:8000"
 
 
 def render_asset(filename: str, height: int, scrolling: bool = True):
-    """Load an HTML file from /assets, inject the current session token and
-    API base in place of the file's own login form, and embed it as-is."""
+    """Load an HTML file from /assets.
 
+    Inject the current session token and API base in place of the file's
+    own login form, then embed it.
+    """
     html = (ASSETS_DIR / filename).read_text(encoding="utf-8")
 
     token = st.session_state.get("token", "") or ""
