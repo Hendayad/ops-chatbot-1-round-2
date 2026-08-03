@@ -17,7 +17,7 @@ try:
     from typing import override
 except ImportError:
 
-    def override(method: Any) -> Any:
+    def override(method: Any, /) -> Any:
         """Compatibility fallback for Python versions before 3.12."""
         return method
 

@@ -4,10 +4,7 @@ from api.config import BASE_URL
 
 
 def get_dashboard_metrics(token):
-    """
-    Fetch dashboard metrics from FastAPI backend.
-    """
-
+    """Fetch dashboard metrics from FastAPI backend."""
     headers = {
         "Authorization": f"Bearer {token}"
     }
@@ -23,5 +20,5 @@ def get_dashboard_metrics(token):
 
         return response.json()
 
-    except requests.exceptions.RequestException as e:
+    except requests.exceptions.RequestException:
         return None

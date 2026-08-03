@@ -9,7 +9,10 @@ The dashboard at dashboards/grafana.json reads only the metric names defined
 below.
 """
 
+from typing import Callable, TypeVar, cast
+
 from prometheus_client import REGISTRY, Counter, Gauge, Histogram
+from prometheus_client.registry import Collector
 
 # EscalationTicket carries no cohort column, so ticket-derived series are
 # published under this single label value until the column exists. Sharing one
@@ -19,15 +22,19 @@ DEFAULT_COHORT_LABEL = "default"
 
 # --- Safe Registration Helper Utility ---
 
+T = TypeVar("T", bound=Collector)
 
-def _get_or_create_metric(metric_cls, name: str, documentation: str, labelnames=(), **kwargs):
+
+def _get_or_create_metric(
+    metric_cls: Callable[..., T], name: str, documentation: str, labelnames=(), **kwargs
+) -> T:
     """Retrieve an existing metric from REGISTRY or create a new one safely."""
     if name in REGISTRY._names_to_collectors:
-        return REGISTRY._names_to_collectors[name]
+        return cast(T, REGISTRY._names_to_collectors[name])
     try:
         return metric_cls(name, documentation, labelnames=labelnames, **kwargs)
     except ValueError:
-        return REGISTRY._names_to_collectors[name]
+        return cast(T, REGISTRY._names_to_collectors[name])
 
 
 # --- Support Volume & Resolution ---

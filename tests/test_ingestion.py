@@ -70,13 +70,28 @@ class InMemoryChunkRepository:
         content_hash = chunks[0].content_hash if chunks else ""
         self.by_source[source_id] = (content_hash, chunks)
 
+    def list_sources(self) -> list[dict]:
+        """Return one row per stored source, mirroring the real repository's shape."""
+        return [
+            {
+                "source_id": source_id,
+                "content_hash": content_hash,
+                "last_ingested_at": None,
+                "chunk_count": len(chunks),
+            }
+            for source_id, (content_hash, chunks) in self.by_source.items()
+        ]
+
+    def retire_source(self, source_id: str) -> bool:
+        """Delete a source's stored chunks; return whether it existed."""
+        return self.by_source.pop(source_id, None) is not None
+
     def all_chunks(self) -> list[KnowledgeChunk]:
         """Return every stored chunk across all sources."""
         result: list[KnowledgeChunk] = []
         for _, chunks in self.by_source.values():
             result.extend(chunks)
         return result
-
 
 def _material(content: str, *, cohort: str = "2026-summer", source: str = "faqs/general.md") -> RawMaterial:
     """Build a :class:`RawMaterial` for tests."""

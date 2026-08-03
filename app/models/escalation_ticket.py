@@ -9,7 +9,7 @@ from app.models.base import BaseModel
 class EscalationTicket(BaseModel, table=True):
     """Persisted escalation ticket record."""
 
-    __tablename__ = "escalation_ticket"
+    __tablename__ = "escalation_ticket" # type: ignore[assignment]
 
     id: str = Field(primary_key=True)
     source: str

@@ -22,16 +22,16 @@ ROLE_PAGES = {
 
     "program_lead": [
         "Dashboard",
+        "Knowledge Base",
         "Cohorts",
+        "Users",
         "Settings",
     ],
 
     "admin": [
         "Dashboard",
         "Escalations",
-        "Knowledge Base",
         "Analytics",
-        "Users",
         "Guide",
         "Settings",
     ],

@@ -129,7 +129,7 @@ class LoggingContextMiddleware(BaseHTTPMiddleware):
             if hasattr(request.state, "user_id"):
                 bind_context(user_id=request.state.user_id)
 
-            if hasattr(request.state, "cohort_id") and "cohort_id" not in request.state:
+            if hasattr(request.state, "cohort_id"):
                 bind_context(cohort_id=request.state.cohort_id)
 
             return response

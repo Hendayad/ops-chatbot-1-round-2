@@ -9,7 +9,6 @@ def show_sidebar(role, notification_count=0, overdue_ticket_count=0):
     st.sidebar.caption("Operations Support Portal")
 
     role = (role or "").lower()
-
     pages = ROLE_PAGES.get(role, [])
 
     display = []
@@ -36,6 +35,14 @@ def show_sidebar(role, notification_count=0, overdue_ticket_count=0):
         (p for p in pages if f" {p}" in selected),
         pages[0] if pages else None,
     )
+
+    # -----------------------------
+    # Spacer
+    # -----------------------------
+    #
+    # This pushes everything below to the bottom.
+    #
+    #st.sidebar.container(height=100, border=False)
 
     # -----------------------------
     # User Card
@@ -83,7 +90,6 @@ def show_sidebar(role, notification_count=0, overdue_ticket_count=0):
     font-size:15px;
     font-weight:600;
     color:#111827;
-    line-height:1.2;
 ">
 {username}
 </div>

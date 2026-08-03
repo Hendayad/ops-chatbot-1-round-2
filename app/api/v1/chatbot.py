@@ -37,6 +37,8 @@ from app.schemas.chat import (
 from app.services.session_naming import maybe_name_session
 from app.tickets.service import trigger_answering_escalation
 from app.tickets.summary import generate_summary
+from app.profile.collector import inchat_collection_flow
+from app.profile.repository import DatabaseProfileRepository
 
 router = APIRouter()
 agent = LangGraphAgent()
@@ -171,7 +173,49 @@ async def chat(
 
         if settings.SESSION_NAMING_ENABLED:
             maybe_name_session(session.id, session.name, chat_request.messages)
+        # ----------------------------------------
+        # Profile collection
+        # ----------------------------------------
 
+        repo = DatabaseProfileRepository()
+
+        turn = await inchat_collection_flow(
+            user_id=str(session.user_id),
+            repository=repo,
+        )
+
+        if not turn.completed:
+
+            latest_message = (
+                chat_request.messages[-1].content
+                if chat_request.messages
+                else ""
+            )
+
+            turn = await inchat_collection_flow(
+                user_id=str(session.user_id),
+                reply=latest_message,
+                repository=repo,
+            )
+            
+            if not turn.completed:
+                
+                assert turn.prompt is not None
+
+                content = (
+                    f"{turn.validation_error}\n\n{turn.prompt}"
+                    if turn.validation_error
+                    else turn.prompt
+                )
+
+                return ChatResponse(
+                    messages=[
+                        Message(
+                            role="assistant",
+                            content=content,
+                        )
+                    ]
+                )
         result = await agent.get_response(
             chat_request.messages,
             session.id,
@@ -211,6 +255,49 @@ async def chat_stream(
 
         if settings.SESSION_NAMING_ENABLED:
             maybe_name_session(session.id, session.name, chat_request.messages)
+        repo = DatabaseProfileRepository()
+
+        turn = await inchat_collection_flow(
+            user_id=str(session.user_id),
+            repository=repo,
+        )   
+
+        if not turn.completed:
+
+            latest_message = (
+                chat_request.messages[-1].content
+                if chat_request.messages
+                else ""
+            )
+
+            turn = await inchat_collection_flow(
+                user_id=str(session.user_id),
+                reply=latest_message,
+                repository=repo,
+            )
+
+            if not turn.completed:
+
+                async def profile_generator():
+                    assert turn.prompt is not None
+
+                    content = (
+                        f"{turn.validation_error}\n\n{turn.prompt}"
+                        if turn.validation_error
+                        else turn.prompt
+                    )
+
+                    response = StreamResponse(
+                        content=content,
+                        done=True,
+                    )
+
+                    yield f"data: {json.dumps(response.model_dump(mode='json'))}\n\n"
+
+                return StreamingResponse(
+                    profile_generator(),
+                    media_type="text/event-stream",
+                )
 
         async def event_generator():
             """Generate chat chunks followed by an optional escalation message."""

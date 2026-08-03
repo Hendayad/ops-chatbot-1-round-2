@@ -20,7 +20,6 @@ if TYPE_CHECKING:
 
 from enum import Enum
 
-from typing import Optional
 
 class UserRole(str, Enum):
     LEARNER = "learner"
@@ -46,12 +45,31 @@ class User(BaseModel, table=True):
     email: str = Field(unique=True, index=True)
     hashed_password: str
     username: Optional[str] = Field(default=None, index=False)
+
+    preferred_name: Optional[str] = Field(
+        default=None,
+        max_length=80,
+    )
+
+    timezone: Optional[str] = Field(
+        default=None,
+        max_length=64,
+    )
+
+    cohort: Optional[str] = Field(
+        default=None,
+        max_length=80,
+    )
+
     is_ops: bool = Field(
         default=False,
         description="Ops/admin authorization flag required for Ops-only endpoints (e.g. /atrisk/*).",
     )
     sessions: List["Session"] = Relationship(back_populates="user")
     role: UserRole = UserRole.LEARNER
+    preferred_name: Optional[str] = Field(default=None)
+    timezone: Optional[str] = Field(default=None)
+    cohort: Optional[str] = Field(default=None)
 
     notification_preference: Optional["NotificationPreference"] = Relationship(
         back_populates="user",

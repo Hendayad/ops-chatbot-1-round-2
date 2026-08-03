@@ -20,5 +20,5 @@ def register(email, username, password):
 
         return response.json()
 
-    except Exception as e:
+    except Exception:
         return None

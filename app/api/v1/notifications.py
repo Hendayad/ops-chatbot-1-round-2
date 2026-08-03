@@ -1,12 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import select
 from datetime import datetime, timedelta, timezone
+from sqlalchemy import desc
+from sqlmodel import select, col
 
 from app.api.v1.auth import get_current_user
 from app.models.user import User, UserRole
 from app.models.user_notification import UserNotification
 from app.models.escalation_ticket import EscalationTicket
 from app.services.database import DatabaseService
+
 
 router = APIRouter()
 
@@ -32,9 +35,7 @@ async def get_notifications(
                 .where(
                     UserNotification.user_id == str(current_user.id)
                 )
-                .order_by(
-                    UserNotification.created_at.desc()
-                )
+                .order_by(desc(col(UserNotification.created_at)))
             ).all()
 
             return notifications
@@ -56,9 +57,7 @@ async def get_notifications(
             .where(
                 EscalationTicket.created_at <= cutoff
             )
-            .order_by(
-                EscalationTicket.created_at
-            )
+            .order_by(col(EscalationTicket.created_at))
         ).all()
 
         return [

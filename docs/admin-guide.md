@@ -1,123 +1,153 @@
-# Admin Guide
 
-## Purpose
+# Adminr Guide
+## 1. Introduction
 
-This guide explains how an administrator operates the OpsAgent AI platform.
+Welcome to the Ops Chatbot Administration Portal.
 
-It covers:
+This guide explains how administrators use the system to monitor learners, manage operations, review notifications, and respond to escalations.
 
-- Logging in
-- Managing users
-- Monitoring analytics
-- Handling escalation tickets
-- Managing reminders
-- Viewing notifications
-- Updating knowledge materials
+No technical knowledge is required.
 
----
+## 2. Administrator Dashboard
 
-## Logging In
+After logging in, you will see the administrator dashboard.
 
-1. Open the frontend.
-2. Sign in using an administrator account.
-3. After authentication the dashboard opens.
-
-The sidebar contains:
+From here you can access:
 
 - Dashboard
-- Users
 - Escalations
-- Knowledge Base
 - Analytics
-- Reminders
 - Settings
 
----
+The dashboard provides a summary of system activity and highlights items that require attention.
 
-## Dashboard
+## 3. Dashboard
 
-The dashboard displays:
+The Dashboard provides an overview of platform activity.
 
-- Support volume
-- Escalation rate
-- Estimated resolution time
+You can monitor:
 
-These metrics help monitor platform health.
+- Total learners
+- Active learners
+- At-risk learners
+- Open escalations
+- Recent notifications
 
----
+Use this page to quickly identify issues that need attention.
 
-## User Management
+## 4. Escalations
 
-Navigate to:
+The Escalations page lists learner issues that require administrator attention.
 
-Users
+For each escalation you can review:
 
-Administrators can:
+- Ticket ID
+- Learner
+- Issue summary
+- Status
+- Creation date
 
-- View all users
-- Promote learners to administrators
-- Demote administrators (except themselves and the final remaining admin)
+Recommended workflow:
 
-Learners cannot access this page.
+Open the newest ticket.
+Read the issue summary.
+Review the learner's context.
+Contact the learner if required.
+Resolve the issue.
+Confirm the ticket has been addressed.
 
----
+High-priority or overdue tickets should be handled first.
 
-## Escalation Tickets
 
-Navigate to:
+If learners report incorrect answers, notify the technical team so the knowledge base can be updated.
 
-Escalations
+## 5. Analytics
 
-Administrators can:
+The Analytics page helps administrators monitor platform performance.
 
-- View every ticket
-- Read conversation context
-- View suggested next actions
-- Resolve tickets
+Typical information includes:
 
-Resolved tickets remain in the system for audit purposes.
+- Learner activity
+- Completion progress
+- At-risk learners
+- Escalation trends
+- Notification statistics
 
----
+Use this information to identify learners who may need additional support.
 
-## Reminders
+## 6. Settings
 
-Navigate to:
+The Settings page allows administrators to review their own account information.
 
-Reminders
+Verify that:
 
-Administrators can:
+- Username is correct.
+- Email address is correct.
+- Administrator role is displayed correctly.
 
-- View reminders
-- Filter reminders by type
-- Filter reminders by due date
+Contact technical support if any information is incorrect.
 
-Reminder history is preserved even after the due date.
+## 7. Daily Checklist
 
----
+At the beginning of each day:
 
-## Notifications
+- Review new notifications.
+- Check for overdue escalations.
+- Review at-risk learners.
+- Ensure learner activity appears normal.
+- Verify no important alerts are present.
 
-Administrators receive notifications for:
+## 8. Weekly Checklist
 
-- New escalation tickets
-- System events
+Once each week:
 
-Notifications can be marked as read.
+- Review unresolved escalations.
+- Check analytics for unusual trends.
+- Review notification history.
 
----
 
-## Analytics
+## 9. Common Situations
+- A learner cannot log in
 
-Analytics provides:
+Verify the learner account exists.
 
-- Support volume
-- Escalation percentage
-- Resolution estimates
+Confirm the learner is using the correct account.
 
-These metrics update automatically.
+If the issue continues, contact technical support.
 
----
+- A learner reports incorrect chatbot answers
 
-## Knowledge Base
+Verify the issue.
 
-Administrators maintain the knowledge base by following the Materials Update Guide.
+Record the reported problem.
+
+Notify the technical team so the knowledge base can be reviewed.
+
+- There are many overdue escalations
+
+Prioritize tickets by age and urgency.
+
+Ensure each ticket has been reviewed and assigned for follow-up.
+
+- Notifications are missing
+
+Refresh the page.
+
+If notifications still do not appear, contact technical support.
+
+## 10. Best Practices
+- Review notifications every day.
+- Resolve escalations promptly.
+- Monitor learner progress regularly.
+- Keep learner information confidential.
+- Report any unusual behavior to technical support.
+## 11. When to Contact Technical Support
+
+Contact technical support if:
+
+- The system cannot be accessed.
+- Pages fail to load.
+- Learner data appears incorrect.
+- Notifications stop working.
+- Escalations cannot be opened.
+- Analytics displays incorrect information.

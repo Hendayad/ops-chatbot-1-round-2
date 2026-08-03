@@ -1,5 +1,4 @@
 import streamlit as st
-import pandas as pd
 from datetime import date
 
 from components.styles import page_header
@@ -65,23 +64,23 @@ def create_cohort_dialog():
 
         st.subheader("New Cohort")
 
-        name = st.text_input("Cohort Name")
+        st.text_input("Cohort Name")
 
-        description = st.text_area(
+        st.text_area(
             "Description",
             height=120,
         )
 
-        project = st.text_input(
+        st.text_input(
             "Project Name",
         )
 
-        start = st.date_input(
+        st.date_input(
             "Start Date",
             value=date.today(),
         )
 
-        end = st.date_input(
+        st.date_input(
             "End Date",
             value=date.today(),
         )

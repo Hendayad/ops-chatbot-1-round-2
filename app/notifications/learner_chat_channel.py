@@ -46,8 +46,9 @@ correctly fail to resolve rather than silently doing nothing.
 from __future__ import annotations
 
 import asyncio
-import logging
 from typing import Callable, Optional
+from sqlalchemy import desc
+from sqlmodel import select, col
 
 from langchain_core.messages import AIMessage
 from sqlmodel import select
@@ -89,7 +90,9 @@ def default_session_resolver(learner_id: str) -> Optional[str]:
     db_service = database_service  # shared singleton -- see app.atrisk.state's module docstring for why
     with db_service.get_session_maker() as db_session:
         row = db_session.exec(
-            select(ChatSession).where(ChatSession.user_id == user_id).order_by(ChatSession.created_at.desc())
+            select(ChatSession)
+            .where(ChatSession.user_id == user_id)
+            .order_by(desc(col(ChatSession.created_at)))
         ).first()
         return row.id if row else None
 

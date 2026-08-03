@@ -1,5 +1,5 @@
 from sqlalchemy import func
-from sqlmodel import select
+from sqlmodel import select, col
 from datetime import datetime
 from typing import cast
 from sqlalchemy.sql.elements import ColumnElement
@@ -28,18 +28,16 @@ def get_support_volume(session, start: datetime, end: datetime) -> list[dict]:
 
 def get_escalated_session_count(session, start: datetime, end: datetime) -> int:
     """Return the number of unique sessions that produced at least one escalation."""
-
     statement = (
         select(func.count(func.distinct(EscalationTicket.session_id)))
         .where(EscalationTicket.created_at >= start)
         .where(EscalationTicket.created_at <= end)
-        .where(EscalationTicket.session_id.is_not(None))
+        .where(col(EscalationTicket.session_id).is_not(None))
     )
 
     return session.exec(statement).one()
 def get_escalation_rate(session, start: datetime, end: datetime) -> float:
     """Return the percentage of sessions that resulted in an escalation."""
-
     daily_counts = get_support_volume(session, start, end)
     total_sessions = sum(row["count"] for row in daily_counts)
 
