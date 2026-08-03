@@ -14,9 +14,11 @@ problems never fall back to general model knowledge.
 
 import os
 import time
-from collections.abc import Mapping, Sequence
 from html import escape
+from collections.abc import Mapping, Sequence
 from typing import Any, Literal, cast
+from app.graph.state import SessionGraphState
+
 
 from langchain_core.messages import AIMessage
 from langchain_core.runnables.config import RunnableConfig
@@ -26,7 +28,7 @@ from pydantic import (
     ValidationError,
 )
 
-from app.cohorts.config import cohort_gating_enabled, is_servable_cohort
+from app.cohorts.config import is_servable_cohort
 from app.cohorts.scope import is_same_cohort, normalize_cohort, scope_by_cohort
 from app.core.logging import logger
 from app.metrics.kpis import track_first_response_time, track_query_deflected
@@ -99,7 +101,7 @@ def _normalise_text(value: Any) -> str:
     return ""
 
 
-def _state_messages(state: GraphState | Mapping[str, Any]) -> Sequence[Any]:
+def _state_messages(state: GraphState | SessionGraphState | Mapping[str, Any]) -> Sequence[Any]:
     """Read messages from either the Pydantic graph state or a test mapping."""
     if isinstance(state, Mapping):
         messages = state.get("messages", [])
@@ -111,7 +113,7 @@ def _state_messages(state: GraphState | Mapping[str, Any]) -> Sequence[Any]:
     return []
 
 
-def extract_latest_question(state: GraphState | Mapping[str, Any]) -> str:
+def extract_latest_question(state: GraphState | SessionGraphState | Mapping[str, Any]) -> str:
     """Return the most recent learner/user message from the graph state."""
     for message in reversed(_state_messages(state)):
         if isinstance(message, Mapping):
@@ -139,7 +141,7 @@ def _mapping_value(container: Mapping[str, Any] | None, *keys: str) -> str:
 
 
 def resolve_cohort(
-    state: GraphState | Mapping[str, Any],
+    state: GraphState | SessionGraphState | Mapping[str, Any],
     config: RunnableConfig | None = None,
     *,
     explicit_cohort: str | None = None,
@@ -171,17 +173,8 @@ def resolve_cohort(
         if isinstance(metadata, Mapping):
             candidates.append(_mapping_value(metadata, "cohort", "cohort_id"))
 
-    for candidate in candidates:
-        normalized = normalize_cohort(candidate)
-        if normalized:
-            return normalized
-
-    # A deployment-level fallback is safe only in true single-cohort mode. In a
-    # configured multi-cohort deployment, a missing learner cohort must refuse
-    # rather than silently receiving the default cohort's materials.
-    if not cohort_gating_enabled():
-        return normalize_cohort(os.getenv("DEFAULT_COHORT"))
-    return ""
+    candidates.append(os.getenv("DEFAULT_COHORT", ""))
+    return next((candidate.strip() for candidate in candidates if candidate.strip()), "")
 
 
 def _refusal(reason: EscalationReason) -> AnswerOutcome:
@@ -368,17 +361,17 @@ async def generate_grounded_answer(
 
 
 async def grounded_answer(
-    state: GraphState | Mapping[str, Any],
+    state: GraphState | SessionGraphState | Mapping[str, Any],
     config: RunnableConfig | None = None,
     *,
     cohort: str | None = None,
-) -> dict[str, Any]:
+) -> dict[str, list[AIMessage]]:
     """LangGraph node that adds one grounded answer or refusal message.
 
-    Grounding details are stored in ``AIMessage.additional_kwargs`` and the
-    explicit answer-escalation fields are returned for the graph router. Source
-    attribution is also rendered into the message content because the current
-    REST response schema exposes only role and content.
+    Grounding details are stored in 'AIMessage.additional_kwargs' so the
+    shared 'GraphState' needs no modification. Source attribution is also
+    rendered into the message content because the current REST response schema
+    exposes only role and content.
     """
     question = extract_latest_question(state)
     resolved_cohort = resolve_cohort(state, config, explicit_cohort=cohort)
@@ -406,12 +399,7 @@ async def grounded_answer(
             }
         },
     )
-    return {
-        "messages": [message],
-        "answer_generated": True,
-        "answer_escalation_signal": outcome.needs_escalation,
-        "answer_escalation_reason": outcome.escalation_reason,
-    }
+    return {"messages": [message]}
 
 
 # Friendly alias for graph builders or tests that name nodes after their file.

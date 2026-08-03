@@ -11,10 +11,3 @@ from .ask_human import ask_human
 from .escalate_to_human import escalate_to_human
 
 tools: list[BaseTool] = [ask_human, escalate_to_human]
-
-try:
-    from .duckduckgo_search import duckduckgo_search_tool
-except ImportError:
-    duckduckgo_search_tool = None
-else:
-    tools.insert(0, duckduckgo_search_tool)

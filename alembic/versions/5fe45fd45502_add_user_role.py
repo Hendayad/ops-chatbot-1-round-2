@@ -11,7 +11,6 @@ from typing import Sequence, Union
 import sqlmodel  # noqa: F401
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = "5fe45fd45502"
@@ -22,7 +21,6 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-
     user_role_enum = sa.Enum(
         "LEARNER",
         "PROGRAM_LEAD",
@@ -49,7 +47,6 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Downgrade schema."""
-
     op.drop_column(
         "user",
         "role"

@@ -1,15 +1,10 @@
 """Escalation trigger interface and default scaffold implementation."""
 
-import logging
 from typing import Protocol
 from app.notifications.escalation_notifications import notify_learner_of_escalation, notify_ops_of_escalation
 from app.services.database import database_service as db_service_for_session
 from app.core.config import settings
-
-try:
-    from app.core.logging import logger
-except ModuleNotFoundError:
-    logger = logging.getLogger(__name__)
+from app.core.logging import logger
 
 from app.schemas.escalation import (
     ConversationSummary,
@@ -19,8 +14,6 @@ from app.schemas.escalation import (
     Ticket,
     TicketStatus,
 )
-
-
 class EscalationTrigger(Protocol):
     """Interface used by answering and proactive flows to escalate issues."""
 

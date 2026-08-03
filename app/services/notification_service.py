@@ -11,10 +11,7 @@ def create_notification(
     message: str,
     category: str,
 ) -> UserNotification:
-    """
-    Create an in-app notification.
-    """
-
+    """Create an in-app notification."""
     notification = UserNotification(
         user_id=user_id,
         title=title,

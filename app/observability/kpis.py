@@ -9,33 +9,29 @@ always writing to the wrong series.
 
 from datetime import datetime
 
-from prometheus_client import REGISTRY, Counter, Gauge
+from prometheus_client import Counter, Gauge
+
+from app.metrics.kpis import _get_or_create_metric
 
 # --- Reminder Metrics ---
 
-if "ops_reminders_sent_total" in REGISTRY._names_to_collectors:
-    reminders_sent_total = REGISTRY._names_to_collectors["ops_reminders_sent_total"]
-else:
-    reminders_sent_total = Counter(
-        "ops_reminders_sent_total",
-        "Total number of reminder notifications sent",
-    )
+reminders_sent_total = _get_or_create_metric(
+    Counter,
+    "ops_reminders_sent_total",
+    "Total number of reminder notifications sent",
+)
 
-if "ops_reminders_late_total" in REGISTRY._names_to_collectors:
-    reminders_late_total = REGISTRY._names_to_collectors["ops_reminders_late_total"]
-else:
-    reminders_late_total = Counter(
-        "ops_reminders_late_total",
-        "Total number of reminders sent at or after their event's due_at",
-    )
+reminders_late_total = _get_or_create_metric(
+    Counter,
+    "ops_reminders_late_total",
+    "Total number of reminders sent at or after their event's due_at",
+)
 
-if "ops_reminder_on_time_rate" in REGISTRY._names_to_collectors:
-    reminder_on_time_rate = REGISTRY._names_to_collectors["ops_reminder_on_time_rate"]
-else:
-    reminder_on_time_rate = Gauge(
-        "ops_reminder_on_time_rate",
-        "Fraction of sent reminders delivered before their event's due_at, for the last computed batch",
-    )
+reminder_on_time_rate = _get_or_create_metric(
+    Gauge,
+    "ops_reminder_on_time_rate",
+    "Fraction of sent reminders delivered before their event's due_at, for the last computed batch",
+)
 
 
 def _as_naive_utc(dt: datetime) -> datetime:

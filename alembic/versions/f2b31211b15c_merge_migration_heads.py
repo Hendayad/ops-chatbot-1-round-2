@@ -1,18 +1,19 @@
-"""merge duplicate heads.
+"""merge migration heads.
 
-Revision ID: bf3cac30a0c5
-Revises: e29c14a7d6f8, fdaea123798d
-Create Date: 2026-07-31 07:58:52.768142
+Revision ID: f2b31211b15c
+Revises: 2b6dca4767ee, a7f3c9e21b04
+Create Date: 2026-08-02 17:30:58.195969
 
 """
+
 from typing import Sequence, Union
 
 import sqlmodel  # noqa: F401
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'bf3cac30a0c5'
-down_revision: Union[str, Sequence[str], None] = ('e29c14a7d6f8', 'fdaea123798d')
+revision: str = "f2b31211b15c"
+down_revision: Union[str, Sequence[str], None] = ("2b6dca4767ee", "a7f3c9e21b04")
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
