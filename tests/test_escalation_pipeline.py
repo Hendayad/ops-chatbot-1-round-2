@@ -11,7 +11,9 @@ summaries, ticket-service behavior, and authenticated ticket API contracts.
 """
 
 from __future__ import annotations
-
+from typing import Coroutine
+from typing import cast
+from unittest.mock import _Call
 import asyncio
 import inspect
 import json
@@ -40,6 +42,8 @@ from app.schemas.escalation import (
 )
 from app.tickets import service as ticket_service_module
 from app.tickets import summary as summary_module
+from collections.abc import Coroutine
+from typing import Any
 
 # Import the module itself rather than a same-named symbol exported by
 # app.graph.nodes.__init__.
@@ -51,10 +55,8 @@ escalation_module = __import__(
 T = TypeVar("T")
 
 
-def _run(awaitable: Awaitable[T]) -> T:
-    """Run one coroutine without requiring pytest-asyncio."""
-    return asyncio.run(awaitable)
-
+def _run(coro: Coroutine[Any, Any, T]) -> T:
+    return asyncio.run(coro)
 
 def _state(*messages: Any) -> dict[str, list[Any]]:
     """Build the mapping-shaped state supported by the escalation node."""
@@ -419,6 +421,7 @@ def test_confirmed_ticket_is_reported_with_metadata_and_redacted_handoff(
     result = _run(escalation_module.escalation_node(state, config))
     message = result["messages"][0]
     metadata = message.additional_kwargs["escalation"]
+    assert trigger_mock.await_args is not None
     handoff = trigger_mock.await_args.args[0]
 
     assert "esc_abcdef123456" in str(message.content)
@@ -603,11 +606,12 @@ def test_successful_llm_summary_returns_valid_open_handoff(
     assert handoff.ticket.problem == "The learner cannot verify the project deadline."
     assert handoff.conversation_summary.user_goal == "Confirm the project deadline."
     assert "full conversation" in handoff.conversation_summary.privacy_note.lower()
+    assert llm_call.await_args is not None
 
-    call_args = llm_call.await_args
+    call_args = cast(_Call, llm_call.await_args)
+
     assert call_args.kwargs["response_format"] is summary_module.SummaryDraft
     assert len(call_args.args[0]) == 2
-
 
 @pytest.mark.parametrize(
     ("trigger", "expected_phrase"),
@@ -780,6 +784,7 @@ def test_generated_summary_composes_with_answering_ticket_service(
             **handoff.to_service_payload(),
         )
     )
+    assert create_mock.await_args is not None
     request = create_mock.await_args.args[0]
 
     assert result.ticket_id == "esc_composed123"
@@ -832,6 +837,7 @@ def test_create_ticket_persists_then_notifies_sync_adapter(
     assert result.status is TicketStatus.OPEN
     persist_mock.assert_awaited_once()
     notifier.notify_ticket_created.assert_called_once()
+    assert notifier.notify_ticket_created.call_args is not None
     notification = notifier.notify_ticket_created.call_args.args[0]
     assert notification.ticket_id == stored.id
     assert notification.problem == stored.problem
@@ -1014,6 +1020,8 @@ def test_answering_helper_builds_answering_source_request(
             user_id="user-1",
         )
     )
+    
+    assert create_mock.await_args is not None
     request = create_mock.await_args.args[0]
 
     assert result.ticket_id == "esc_helper123"
@@ -1185,7 +1193,7 @@ def test_router_exposes_required_methods_auth_and_rate_limits() -> None:
 
     for route in (list_route, view_route, resolve_route):
         dependency_calls = {dependency.call for dependency in route.dependant.dependencies}
-        assert tickets_api.get_current_user in dependency_calls
+        assert tickets_api.get_current_ops_user in dependency_calls
 
     route_limits = tickets_api.limiter._route_limits
     for endpoint_name in (
@@ -1248,7 +1256,7 @@ def test_fastapi_rejects_invalid_ticket_inputs(
     )
     app = FastAPI()
     app.include_router(tickets_api.router, prefix="/tickets")
-    app.dependency_overrides[tickets_api.get_current_user] = _current_user
+    app.dependency_overrides[tickets_api.get_current_ops_user] = _current_user
     monkeypatch.setattr(tickets_api.limiter, "enabled", False, raising=False)
 
     with TestClient(app) as client:
