@@ -35,11 +35,16 @@ class TokenResponse(BaseResponse):
         access_token: The JWT access token
         token_type: The type of token (always "bearer")
         expires_at: When the token expires
+        role: "admin" if the user is Ops-authorized (is_ops), else "learner".
+            Derived from the User model's is_ops flag -- there is no separate
+            role field on the backend, so this is a direct mapping, not a
+            distinct concept.
     """
 
     access_token: str = Field(..., description="The JWT access token")
     token_type: str = Field(default="bearer", description="The type of token")
     expires_at: datetime = Field(..., description="When the token expires")
+    role: str = Field(default="learner", description="'admin' if is_ops else 'learner'")
 
 
 class UserCreate(BaseModel):
