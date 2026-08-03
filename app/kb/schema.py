@@ -8,7 +8,9 @@ these schemas deliberately contain no database connection or SQL logic.
 from enum import StrEnum
 from hashlib import sha256
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.cohorts.scope import normalize_cohort
 
 
 class SourceType(StrEnum):
@@ -49,6 +51,15 @@ class SourceMetadata(SchemaModel):
     source: str = Field(min_length=1, max_length=1000)
     type: SourceType
     cohort: str = Field(min_length=1, max_length=100)
+
+    @field_validator("cohort")
+    @classmethod
+    def normalize_cohort_id(cls, value: str) -> str:
+        """Store cohort IDs in the same canonical form used by retrieval."""
+        normalized = normalize_cohort(value)
+        if not normalized:
+            raise ValueError("cohort must contain a valid identifier")
+        return normalized
 
 
 class KnowledgeDocument(SchemaModel):

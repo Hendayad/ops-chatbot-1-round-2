@@ -36,8 +36,15 @@ from app.kb.schema import (
     normalize_content,
 )
 
-# Dimensionality of ``text-embedding-3-small`` (the project's default embedder).
-DEFAULT_EMBEDDING_DIM = 1536
+# Dimensionality must match the configured embedding model and the pgvector
+# column. The default is text-embedding-3-small; alternative providers can
+# set KB_EMBEDDING_DIM without changing application code.
+_embedding_dim_value = os.getenv("KB_EMBEDDING_DIM", "1536")
+DEFAULT_EMBEDDING_DIM = (
+    int(_embedding_dim_value)
+    if _embedding_dim_value.isdigit() and int(_embedding_dim_value) > 0
+    else 1536
+)
 
 # Physical table backing the knowledge base. Owned entirely by this lane; it is
 # created idempotently by :class:`PgVectorChunkRepository` so no shared Alembic
