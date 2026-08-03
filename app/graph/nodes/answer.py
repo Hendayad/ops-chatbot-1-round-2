@@ -14,8 +14,8 @@ problems never fall back to general model knowledge.
 
 import os
 import time
-from html import escape
 from collections.abc import Mapping, Sequence
+from html import escape
 from typing import Any, Literal, cast
 
 from langchain_core.messages import AIMessage
@@ -26,7 +26,7 @@ from pydantic import (
     ValidationError,
 )
 
-from app.cohorts.config import is_servable_cohort
+from app.cohorts.config import cohort_gating_enabled, is_servable_cohort
 from app.cohorts.scope import is_same_cohort, normalize_cohort, scope_by_cohort
 from app.core.logging import logger
 from app.metrics.kpis import track_first_response_time, track_query_deflected
@@ -171,8 +171,17 @@ def resolve_cohort(
         if isinstance(metadata, Mapping):
             candidates.append(_mapping_value(metadata, "cohort", "cohort_id"))
 
-    candidates.append(os.getenv("DEFAULT_COHORT", ""))
-    return next((candidate.strip() for candidate in candidates if candidate.strip()), "")
+    for candidate in candidates:
+        normalized = normalize_cohort(candidate)
+        if normalized:
+            return normalized
+
+    # A deployment-level fallback is safe only in true single-cohort mode. In a
+    # configured multi-cohort deployment, a missing learner cohort must refuse
+    # rather than silently receiving the default cohort's materials.
+    if not cohort_gating_enabled():
+        return normalize_cohort(os.getenv("DEFAULT_COHORT"))
+    return ""
 
 
 def _refusal(reason: EscalationReason) -> AnswerOutcome:
@@ -363,13 +372,13 @@ async def grounded_answer(
     config: RunnableConfig | None = None,
     *,
     cohort: str | None = None,
-) -> dict[str, list[AIMessage]]:
+) -> dict[str, Any]:
     """LangGraph node that adds one grounded answer or refusal message.
 
-    Grounding details are stored in 'AIMessage.additional_kwargs' so the
-    shared 'GraphState' needs no modification. Source attribution is also
-    rendered into the message content because the current REST response schema
-    exposes only role and content.
+    Grounding details are stored in ``AIMessage.additional_kwargs`` and the
+    explicit answer-escalation fields are returned for the graph router. Source
+    attribution is also rendered into the message content because the current
+    REST response schema exposes only role and content.
     """
     question = extract_latest_question(state)
     resolved_cohort = resolve_cohort(state, config, explicit_cohort=cohort)
@@ -397,7 +406,12 @@ async def grounded_answer(
             }
         },
     )
-    return {"messages": [message]}
+    return {
+        "messages": [message],
+        "answer_generated": True,
+        "answer_escalation_signal": outcome.needs_escalation,
+        "answer_escalation_reason": outcome.escalation_reason,
+    }
 
 
 # Friendly alias for graph builders or tests that name nodes after their file.
