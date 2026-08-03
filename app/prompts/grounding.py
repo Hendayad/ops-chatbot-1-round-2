@@ -5,6 +5,7 @@ import re
 from collections.abc import Sequence
 from typing import Protocol
 
+
 from langchain_core.messages import (
     BaseMessage,
     HumanMessage,
@@ -52,8 +53,6 @@ Decide whether the approved context fully supports an answer, then return the st
 _CITATION_PATTERN = re.compile(r"S[1-9]\d*")
 _INLINE_CITATION_PATTERN = re.compile(r"\[(S[1-9]\d*)\]")
 
-
-from typing import Protocol
 
 
 class GroundingChunk(Protocol):

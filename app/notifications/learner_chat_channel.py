@@ -51,7 +51,7 @@ from sqlalchemy import desc
 from sqlmodel import select, col
 
 from langchain_core.messages import AIMessage
-from sqlmodel import select
+
 
 from app.atrisk.nudges import NotificationSender
 from app.core.langgraph.graph import LangGraphAgent

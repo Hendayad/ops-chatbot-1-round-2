@@ -17,8 +17,9 @@ BADGE_STYLES = {
 }
 
 ROLE_BADGE = {
-    "learner":      "info",
-    "admin":        "neutral",
+    "learner": "info",
+    "program_lead": "success",
+    "admin": "neutral",
 }
 
 

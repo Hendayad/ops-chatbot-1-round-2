@@ -18,7 +18,7 @@ from html import escape
 from collections.abc import Mapping, Sequence
 from typing import Any, Literal, cast
 from app.graph.state import SessionGraphState
-from app.schemas.graph import GraphState
+
 
 from langchain_core.messages import AIMessage
 from langchain_core.runnables.config import RunnableConfig

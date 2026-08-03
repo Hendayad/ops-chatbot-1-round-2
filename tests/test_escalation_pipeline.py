@@ -17,10 +17,9 @@ from unittest.mock import _Call
 import asyncio
 import inspect
 import json
-from collections.abc import Awaitable
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from typing import Any, TypeVar, cast
+from typing import Any, TypeVar
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -42,8 +41,6 @@ from app.schemas.escalation import (
 )
 from app.tickets import service as ticket_service_module
 from app.tickets import summary as summary_module
-from collections.abc import Coroutine
-from typing import Any
 
 # Import the module itself rather than a same-named symbol exported by
 # app.graph.nodes.__init__.

@@ -5,10 +5,34 @@ from components.nav_config import PAGE_ICONS, ROLE_PAGES
 
 def show_sidebar(role, notification_count=0, overdue_ticket_count=0):
 
+    role = (role or "").lower()
+
+    st.sidebar.markdown(
+        """
+        <style>
+        section[data-testid="stSidebar"] > div {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        .sidebar-spacer {
+            flex: 1;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+    # -----------------------------
+    # Top section
+    # -----------------------------
+
     st.sidebar.title("🛠 Ops Console")
     st.sidebar.caption("Operations Support Portal")
 
-    role = (role or "").lower()
+
     pages = ROLE_PAGES.get(role, [])
 
     display = []
@@ -25,36 +49,44 @@ def show_sidebar(role, notification_count=0, overdue_ticket_count=0):
 
         display.append(label)
 
+
     selected = st.sidebar.radio(
         "",
         display,
         label_visibility="collapsed",
     )
 
+
     page = next(
         (p for p in pages if f" {p}" in selected),
         pages[0] if pages else None,
     )
 
-    # -----------------------------
-    # Spacer
-    # -----------------------------
-    #
-    # This pushes everything below to the bottom.
-    #
-    #st.sidebar.container(height=100, border=False)
 
     # -----------------------------
-    # User Card
+    # Push user section down
+    # -----------------------------
+
+    st.sidebar.markdown(
+        '<div class="sidebar-spacer"></div>',
+        unsafe_allow_html=True,
+    )
+
+
+    # -----------------------------
+    # Bottom user card
     # -----------------------------
 
     user = st.session_state.get("user", {})
 
     username = user.get("username", "User")
     email = user.get("email", "")
-    initial = username[0].upper()
+
+    initial = username[0].upper() if username else "U"
+
 
     st.sidebar.markdown("---")
+
 
     st.sidebar.markdown(
         f"""
@@ -62,7 +94,6 @@ def show_sidebar(role, notification_count=0, overdue_ticket_count=0):
     border:1px solid #E5E7EB;
     border-radius:14px;
     padding:12px;
-    margin-top:6px;
     margin-bottom:10px;
 ">
 
@@ -84,6 +115,7 @@ def show_sidebar(role, notification_count=0, overdue_ticket_count=0):
 {initial}
 </div>
 
+
 <div>
 
 <div style="
@@ -94,6 +126,7 @@ def show_sidebar(role, notification_count=0, overdue_ticket_count=0):
 {username}
 </div>
 
+
 <div style="
     font-size:12px;
     color:#6B7280;
@@ -101,6 +134,7 @@ def show_sidebar(role, notification_count=0, overdue_ticket_count=0):
 ">
 {email}
 </div>
+
 
 <div style="
     display:inline-block;
@@ -115,6 +149,7 @@ def show_sidebar(role, notification_count=0, overdue_ticket_count=0):
 {role.title()}
 </div>
 
+
 </div>
 
 </div>
@@ -124,11 +159,13 @@ def show_sidebar(role, notification_count=0, overdue_ticket_count=0):
         unsafe_allow_html=True,
     )
 
+
     if st.sidebar.button(
         "🚪 Logout",
         use_container_width=True,
     ):
         st.session_state.clear()
         st.rerun()
+
 
     return page
