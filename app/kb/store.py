@@ -13,7 +13,10 @@ Postgres table, but :class:`KBStore` depends only on the protocols, so tests
 inject in-memory fakes. See ``tests/test_ingestion.py``.
 """
 
+import math
+import os
 from typing import (
+    Any,
     Protocol,
     runtime_checkable,
 )
@@ -26,7 +29,7 @@ from sqlmodel import Session
 
 from app.core.config import settings
 from app.core.logging import logger
-from app.schemas.knowledge import (
+from app.kb.schema import (
     IngestionStats,
     KnowledgeChunk,
     RawMaterial,
@@ -92,6 +95,14 @@ class ChunkRepository(Protocol):
         """
         ...
 
+    def list_sources(self) -> list[dict[str, Any]]:
+        """Return one summary row per stored source."""
+        ...
+
+    def retire_source(self, source_id: str) -> bool:
+        """Remove all chunks for a source and report whether it existed."""
+        ...
+
 
 def chunk_document(
     material: RawMaterial,
@@ -117,6 +128,10 @@ def chunk_document(
     Raises:
         ValueError: If ``overlap`` is not smaller than ``max_chars``.
     """
+    if max_chars < 1:
+        raise ValueError("max_chars must be at least 1")
+    if overlap < 0:
+        raise ValueError("overlap must be at least 0")
     if overlap >= max_chars:
         raise ValueError("overlap must be smaller than max_chars")
 
@@ -228,7 +243,7 @@ class KBStore:
         )
         return stats
 
-    def list_materials(self) -> list[dict]:
+    def list_materials(self) -> list[dict[str, Any]]:
         """List all materials currently in the knowledge base, with freshness info."""
         return self._repository.list_sources()
 
@@ -265,7 +280,19 @@ class OpenAIEmbedder:
         from pydantic import SecretStr
 
         self._model = model or settings.LONG_TERM_MEMORY_EMBEDDER_MODEL
-        self._client = OpenAIEmbeddings(model=self._model, api_key=SecretStr(settings.OPENAI_API_KEY))
+        api_key = SecretStr(settings.OPENAI_API_KEY)
+        base_url = os.getenv("OPENAI_BASE_URL")
+        if base_url:
+            self._client = OpenAIEmbeddings(
+                model=self._model,
+                api_key=api_key,
+                base_url=base_url,
+            )
+        else:
+            self._client = OpenAIEmbeddings(
+                model=self._model,
+                api_key=api_key,
+            )
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         """Embed a batch of texts with the configured OpenAI model.
@@ -282,7 +309,11 @@ class OpenAIEmbedder:
 
 
 def _to_vector_literal(embedding: list[float]) -> str:
-    """Render an embedding as a ``pgvector`` text literal (``[1,2,3]``)."""
+    """Render a validated embedding as a pgvector text literal."""
+    if not embedding:
+        raise ValueError("embedding must not be empty")
+    if not all(math.isfinite(value) for value in embedding):
+        raise ValueError("embedding values must be finite")
     return "[" + ",".join(repr(value) for value in embedding) + "]"
 
 
@@ -327,6 +358,8 @@ class PgVectorChunkRepository:
             """,
             f"CREATE INDEX IF NOT EXISTS ix_{_TABLE_NAME}_source_id ON {_TABLE_NAME} (source_id);",
             f"CREATE INDEX IF NOT EXISTS ix_{_TABLE_NAME}_cohort ON {_TABLE_NAME} (cohort);",
+            f"CREATE UNIQUE INDEX IF NOT EXISTS ux_{_TABLE_NAME}_source_chunk "
+            f"ON {_TABLE_NAME} (source_id, chunk_index);",
         ]
         with Session(self._engine) as session:
             for statement in ddl:
@@ -351,6 +384,12 @@ class PgVectorChunkRepository:
         """Delete existing chunks for a source and insert the new ones atomically."""
         if len(chunks) != len(embeddings):
             raise ValueError("chunks and embeddings must be the same length")
+        if any(chunk.source_id != source_id for chunk in chunks):
+            raise ValueError("all chunks must belong to source_id")
+        if any(len(embedding) != self._embedding_dim for embedding in embeddings):
+            raise ValueError(
+                f"every embedding must contain {self._embedding_dim} values"
+            )
 
         insert_sql = text(
             f"""
@@ -382,6 +421,32 @@ class PgVectorChunkRepository:
                     },
                 )
             session.commit()
+
+    def list_sources(self) -> list[dict[str, Any]]:
+        """Return one summary row per stored source."""
+        statement = text(
+            f"""
+            SELECT
+                source_id, cohort, title, source, type, content_hash,
+                COUNT(*) AS chunk_count, MAX(created_at) AS updated_at
+            FROM {_TABLE_NAME}
+            GROUP BY source_id, cohort, title, source, type, content_hash
+            ORDER BY cohort, title
+            """
+        )
+        with Session(self._engine) as session:
+            rows = session.execute(statement).mappings().all()
+        return [dict(row) for row in rows]
+
+    def retire_source(self, source_id: str) -> bool:
+        """Delete all chunks for a source and return whether rows were removed."""
+        with Session(self._engine) as session:
+            result = session.execute(
+                text(f"DELETE FROM {_TABLE_NAME} WHERE source_id = :sid"),
+                {"sid": source_id},
+            )
+            session.commit()
+        return bool(result.rowcount)
 
 
 def build_default_store() -> KBStore:
