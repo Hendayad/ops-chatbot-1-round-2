@@ -1,25 +1,22 @@
-"""Tests for knowledge base ingestion.
+"""Tests for cohort-scoped knowledge-base ingestion.
 
-These tests exercise the ingestion *logic* — hashing, chunking, update-not-
-duplicate replacement, and metadata preservation — without a live database or a
-real embedding API. Persistence and embedding are replaced by in-memory fakes
-injected through the same protocols the production wiring uses, so the suite is
-fast and deterministic and runs anywhere ``make check`` runs.
+The suite uses in-memory fakes, so it verifies chunking, hashing, file loading,
+and update-not-duplicate behavior without a live database or embedding API.
 """
 
-import gc
-import shutil
-import tempfile
 from pathlib import Path
+from typing import Any
 
 import pytest
+from pydantic import ValidationError
 
-from app.ingestion.loader import load_materials
-from app.kb.store import (
-    KBStore,
-    chunk_document,
+from app.kb.ingest import (
+    ingest_file,
+    ingest_materials,
+    ingest_sources,
+    material_from_file,
 )
-from app.schemas.knowledge import (
+from app.kb.schema import (
     IngestionStats,
     KnowledgeChunk,
     RawMaterial,
@@ -27,37 +24,29 @@ from app.schemas.knowledge import (
     SourceType,
     compute_content_hash,
 )
+from app.kb.store import KBStore, chunk_document
 
 
 class FakeEmbedder:
-    """Deterministic embedder that records how many texts it embedded."""
+    """Return deterministic vectors and record embedded texts."""
 
     def __init__(self) -> None:
-        """Initialize the call counter."""
-        self.calls = 0
+        self.texts: list[str] = []
 
     def embed(self, texts: list[str]) -> list[list[float]]:
-        """Return a fixed-width deterministic vector per text and count them."""
-        self.calls += len(texts)
+        self.texts.extend(texts)
         return [[float(len(text)), 1.0, 0.0] for text in texts]
 
 
 class InMemoryChunkRepository:
-    """In-memory stand-in for the pgvector repository.
-
-    Stores, per source id, the content hash and the chunk rows that were last
-    written. ``replace_source`` mirrors the atomic delete-then-insert contract
-    of the real repository.
-    """
+    """Minimal in-memory replacement for the pgvector repository."""
 
     def __init__(self) -> None:
-        """Initialize empty storage."""
-        self.by_source: dict[str, tuple[str, list[KnowledgeChunk]]] = {}
+        self.by_source: dict[str, list[KnowledgeChunk]] = {}
 
     def get_source_hash(self, source_id: str) -> str | None:
-        """Return the stored hash for a source, or ``None``."""
-        entry = self.by_source.get(source_id)
-        return entry[0] if entry is not None else None
+        chunks = self.by_source.get(source_id, [])
+        return chunks[0].content_hash if chunks else None
 
     def replace_source(
         self,
@@ -65,182 +54,228 @@ class InMemoryChunkRepository:
         chunks: list[KnowledgeChunk],
         embeddings: list[list[float]],
     ) -> None:
-        """Replace all stored chunks for a source."""
         assert len(chunks) == len(embeddings)
-        content_hash = chunks[0].content_hash if chunks else ""
-        self.by_source[source_id] = (content_hash, chunks)
+        self.by_source[source_id] = list(chunks)
+
+    def list_sources(self) -> list[dict[str, Any]]:
+        return [
+            {
+                "source_id": source_id,
+                "cohort": chunks[0].metadata.cohort,
+                "title": chunks[0].metadata.title,
+                "chunk_count": len(chunks),
+            }
+            for source_id, chunks in self.by_source.items()
+            if chunks
+        ]
+
+    def retire_source(self, source_id: str) -> bool:
+        return self.by_source.pop(source_id, None) is not None
 
     def all_chunks(self) -> list[KnowledgeChunk]:
-        """Return every stored chunk across all sources."""
-        result: list[KnowledgeChunk] = []
-        for _, chunks in self.by_source.values():
-            result.extend(chunks)
-        return result
+        return [chunk for chunks in self.by_source.values() for chunk in chunks]
 
 
-def _material(content: str, *, cohort: str = "2026-summer", source: str = "faqs/general.md") -> RawMaterial:
-    """Build a :class:`RawMaterial` for tests."""
-    metadata = SourceMetadata(title="General FAQ", source=source, type=SourceType.FAQ, cohort=cohort)
+def _material(
+    content: str,
+    *,
+    cohort: str = "2026-summer",
+    source: str = "faqs/general.md",
+    source_type: SourceType = SourceType.FAQ,
+) -> RawMaterial:
+    metadata = SourceMetadata(
+        title="General FAQ",
+        source=source,
+        type=source_type,
+        cohort=cohort,
+    )
     return RawMaterial(metadata=metadata, content=content)
 
 
 def _make_store() -> tuple[KBStore, InMemoryChunkRepository, FakeEmbedder]:
-    """Build a store wired with in-memory fakes."""
     repository = InMemoryChunkRepository()
     embedder = FakeEmbedder()
-    return KBStore(repository=repository, embedder=embedder), repository, embedder
+    store = KBStore(repository=repository, embedder=embedder)
+    return store, repository, embedder
 
 
 def test_ingest_writes_chunks_with_required_metadata() -> None:
-    """Every stored chunk carries title, source, type, and cohort."""
     store, repository, _ = _make_store()
 
-    stats = store.ingest([_material("What are the office hours?\n\nMon-Fri, 9-5.")])
+    stats = ingest_materials(
+        [_material("What are the office hours?\n\nMonday to Friday, 9 to 5.")],
+        store=store,
+    )
 
-    assert stats.sources_ingested == 1
-    assert stats.chunks_written >= 1
-    chunks = repository.all_chunks()
-    assert chunks
-    for chunk in chunks:
-        assert chunk.metadata.title == "General FAQ"
-        assert chunk.metadata.source == "faqs/general.md"
-        assert chunk.metadata.type is SourceType.FAQ
-        assert chunk.metadata.cohort == "2026-summer"
+    assert stats == IngestionStats(
+        sources_seen=1,
+        sources_ingested=1,
+        sources_skipped=0,
+        chunks_written=1,
+    )
+    chunk = repository.all_chunks()[0]
+    assert chunk.source_id == "2026-summer::faqs/general.md"
+    assert chunk.metadata.title == "General FAQ"
+    assert chunk.metadata.source == "faqs/general.md"
+    assert chunk.metadata.type is SourceType.FAQ
+    assert chunk.metadata.cohort == "2026-summer"
 
 
-def test_reingest_identical_is_idempotent() -> None:
-    """Re-ingesting unchanged content writes nothing and skips embedding."""
+def test_reingest_identical_content_is_idempotent() -> None:
     store, repository, embedder = _make_store()
-    material = _material("Deadlines are posted every Monday.\n\nCheck the portal.")
+    material = _material("Deadlines are posted every Monday.")
 
-    first = store.ingest([material])
-    chunks_after_first = len(repository.all_chunks())
-    embed_calls_after_first = embedder.calls
-
-    second = store.ingest([material])
+    first = ingest_materials([material], store=store)
+    first_chunks = list(repository.all_chunks())
+    first_embed_count = len(embedder.texts)
+    second = ingest_materials([material], store=store)
 
     assert first.sources_ingested == 1
     assert second.sources_skipped == 1
     assert second.sources_ingested == 0
-    # No duplication: chunk count is unchanged on the second run.
-    assert len(repository.all_chunks()) == chunks_after_first
-    # No wasted embedding work on an unchanged source.
-    assert embedder.calls == embed_calls_after_first
+    assert second.chunks_written == 0
+    assert repository.all_chunks() == first_chunks
+    assert len(embedder.texts) == first_embed_count
 
 
-def test_reingest_changed_content_replaces_not_duplicates() -> None:
-    """Changed content replaces the old chunks rather than adding to them."""
+def test_changed_content_replaces_old_chunks() -> None:
     store, repository, _ = _make_store()
-    source = "faqs/general.md"
 
-    store.ingest([_material("Version one of the answer.", source=source)])
-    first_chunks = repository.all_chunks()
-    assert all("Version one" in chunk.content for chunk in first_chunks)
+    ingest_materials([_material("Version one.")], store=store)
+    stats = ingest_materials([_material("Version two is the updated answer.")], store=store)
 
-    stats = store.ingest([_material("Version two is completely different.", source=source)])
-
+    stored_text = " ".join(chunk.content for chunk in repository.all_chunks())
     assert stats.sources_ingested == 1
-    stored = repository.all_chunks()
-    # Old content is gone; only the new version remains for this source.
-    assert all("Version two" in chunk.content for chunk in stored)
-    assert not any("Version one" in chunk.content for chunk in stored)
+    assert "Version two" in stored_text
+    assert "Version one" not in stored_text
+    assert len(repository.by_source) == 1
 
 
-def test_cohorts_do_not_leak() -> None:
-    """The same source in two cohorts is stored independently."""
+def test_same_source_path_is_isolated_by_cohort() -> None:
     store, repository, _ = _make_store()
-    source = "faqs/general.md"
+    source = "schedules/current.md"
 
-    store.ingest([_material("Cohort A schedule.", cohort="cohort-a", source=source)])
-    store.ingest([_material("Cohort B schedule.", cohort="cohort-b", source=source)])
+    ingest_materials(
+        [
+            _material("Cohort A session is Monday.", cohort="cohort-a", source=source),
+            _material("Cohort B session is Tuesday.", cohort="cohort-b", source=source),
+        ],
+        store=store,
+    )
 
-    cohorts = {chunk.metadata.cohort for chunk in repository.all_chunks()}
-    assert cohorts == {"cohort-a", "cohort-b"}
-    assert len(repository.by_source) == 2
+    assert set(repository.by_source) == {
+        "cohort-a::schedules/current.md",
+        "cohort-b::schedules/current.md",
+    }
+    assert {chunk.metadata.cohort for chunk in repository.all_chunks()} == {"cohort-a", "cohort-b"}
 
 
-def test_content_hash_is_stable_under_cosmetic_whitespace() -> None:
-    """Trailing whitespace and CRLF do not change the idempotency key."""
+def test_chunking_is_deterministic_and_sequential() -> None:
+    material = _material("A" * 220)
+
+    first = chunk_document(material, max_chars=100, overlap=20)
+    second = chunk_document(material, max_chars=100, overlap=20)
+
+    assert first == second
+    assert [chunk.chunk_index for chunk in first] == [0, 1, 2]
+    assert all(chunk.content_hash == material.content_hash for chunk in first)
+    assert first[0].content[-20:] == first[1].content[:20]
+
+
+@pytest.mark.parametrize(
+    ("max_chars", "overlap"),
+    [(0, 0), (100, -1), (100, 100), (100, 101)],
+)
+def test_chunking_rejects_invalid_limits(max_chars: int, overlap: int) -> None:
+    with pytest.raises(ValueError):
+        chunk_document(_material("Valid content"), max_chars=max_chars, overlap=overlap)
+
+
+def test_content_hash_ignores_cosmetic_whitespace() -> None:
     assert compute_content_hash("hello\r\nworld  ") == compute_content_hash("hello\nworld")
 
 
-def test_chunk_indices_are_sequential() -> None:
-    """Chunk indices start at zero and increase without gaps."""
-    long_body = "\n\n".join(f"Paragraph number {i} with some filler text." for i in range(50))
-    chunks = chunk_document(_material(long_body), max_chars=120, overlap=20)
-
-    assert len(chunks) > 1
-    assert [chunk.chunk_index for chunk in chunks] == list(range(len(chunks)))
+def test_blank_document_content_is_rejected() -> None:
+    with pytest.raises(ValidationError):
+        _material("   \n\n   ")
 
 
-def test_empty_material_produces_no_chunks() -> None:
-    """Whitespace-only content yields zero chunks and no ingested source."""
-    store, repository, embedder = _make_store()
+def test_ingest_file_loads_and_persists_local_material(tmp_path: Path) -> None:
+    store, repository, _ = _make_store()
+    file_path = tmp_path / "onboarding-guide.md"
+    file_path.write_text("Install Python and clone the repository.", encoding="utf-8")
 
-    stats = store.ingest([_material("   \n\n   ")])
-
-    assert stats.chunks_written == 0
-    assert repository.all_chunks() == []
-    assert embedder.calls == 0
-
-
-@pytest.fixture
-def temp_dir():
-    """Yield a private temporary directory and remove it afterwards.
-
-    Uses tempfile rather than pytest's tmp_path fixture because this Windows
-    environment denies access to pytest's own temporary root.
-    """
-    path = Path(tempfile.mkdtemp())
-    try:
-        yield path
-    finally:
-        shutil.rmtree(path, ignore_errors=True)
-
-
-def test_loader_reads_directory_tree(temp_dir: Path) -> None:
-    """The loader tags materials by directory and stamps the cohort."""
-    (temp_dir / "faqs").mkdir()
-    (temp_dir / "onboarding").mkdir()
-    (temp_dir / "faqs" / "general.md").write_text("# General\n\nWelcome to the program.", encoding="utf-8")
-    (temp_dir / "onboarding" / "day1.md").write_text("# Day One\n\nSet up your laptop.", encoding="utf-8")
-
-    materials: list[RawMaterial] = []
-    try:
-        materials = load_materials(temp_dir, cohort="cohort-x")
-
-        assert len(materials) == 2
-        types = {material.metadata.type for material in materials}
-        assert types == {SourceType.FAQ, SourceType.ONBOARDING}
-        assert all(material.metadata.cohort == "cohort-x" for material in materials)
-    finally:
-        if materials:
-            del materials
-        gc.collect()
-
-
-def test_loader_renders_faq_json(temp_dir: Path) -> None:
-    """FAQ JSON is rendered into readable question/answer text."""
-    (temp_dir / "faqs").mkdir()
-    (temp_dir / "faqs" / "faq.json").write_text(
-        '[{"question": "When do sessions start?", "answer": "At 10 AM."}]',
-        encoding="utf-8",
+    stats = ingest_file(
+        file_path,
+        cohort="cohort-x",
+        source_type=SourceType.ONBOARDING,
+        source="onboarding/guide.md",
+        store=store,
     )
 
-    materials: list[RawMaterial] = []
-    try:
-        materials = load_materials(temp_dir, cohort="cohort-x")
-
-        assert len(materials) == 1
-        assert "When do sessions start?" in materials[0].content
-        assert "At 10 AM." in materials[0].content
-    finally:
-        if materials:
-            del materials
-        gc.collect()
+    chunk = repository.all_chunks()[0]
+    assert stats.sources_ingested == 1
+    assert chunk.metadata.title == "Onboarding Guide"
+    assert chunk.metadata.source == "onboarding/guide.md"
+    assert chunk.metadata.type is SourceType.ONBOARDING
+    assert chunk.metadata.cohort == "cohort-x"
 
 
-def test_ingestion_stats_default_to_zero() -> None:
-    """A fresh stats object starts at zero on every counter."""
-    stats = IngestionStats()
-    assert (stats.sources_seen, stats.sources_ingested, stats.sources_skipped, stats.chunks_written) == (0, 0, 0, 0)
+def test_ingest_sources_resolves_paths_from_base_directory(tmp_path: Path) -> None:
+    store, repository, _ = _make_store()
+    (tmp_path / "faq.md").write_text("The support channel is listed in the portal.", encoding="utf-8")
+    (tmp_path / "schedule.md").write_text("The next session is Thursday.", encoding="utf-8")
+    sources = [
+        SourceMetadata(title="FAQ", source="faq.md", type=SourceType.FAQ, cohort="cohort-x"),
+        SourceMetadata(title="Schedule", source="schedule.md", type=SourceType.SCHEDULE, cohort="cohort-x"),
+    ]
+
+    stats = ingest_sources(sources, base_dir=tmp_path, store=store)
+
+    assert stats.sources_seen == 2
+    assert stats.sources_ingested == 2
+    assert len(repository.by_source) == 2
+
+
+def test_material_from_file_preserves_custom_source_id(tmp_path: Path) -> None:
+    file_path = tmp_path / "program.md"
+    file_path.write_text("Approved program rules.", encoding="utf-8")
+
+    material = material_from_file(
+        file_path,
+        cohort="cohort-y",
+        source_type="program_doc",
+        title="Program Rules",
+        source="program/rules.md",
+    )
+
+    assert material.source_id == "cohort-y::program/rules.md"
+    assert material.metadata.type is SourceType.PROGRAM_DOC
+    assert material.content == "Approved program rules."
+
+
+def test_empty_batch_returns_zero_stats_without_using_store() -> None:
+    assert ingest_materials([]) == IngestionStats()
+
+
+def test_missing_source_file_raises_clear_error(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError, match="Knowledge source not found"):
+        material_from_file(
+            tmp_path / "missing.md",
+            cohort="cohort-x",
+            source_type=SourceType.FAQ,
+        )
+
+
+def test_store_can_list_and_retire_materials() -> None:
+    store, repository, _ = _make_store()
+    material = _material("A stored FAQ.")
+    ingest_materials([material], store=store)
+
+    listed = store.list_materials()
+    retired = store.retire_material(material.source_id)
+
+    assert listed[0]["source_id"] == material.source_id
+    assert retired is True
+    assert repository.all_chunks() == []
+    assert store.retire_material(material.source_id) is False
