@@ -12,9 +12,8 @@ Expected file shape::
       "cohort-b": {"name": "Sept 2026 Cohort", "materials_root": "materials/cohort-b"}
     }
 
-``materials_root`` is the directory app.ingestion.loader.load_materials walks,
-so launching a cohort is: add the entry, drop the files in that directory, call
-POST /api/v1/kb/cohorts/{cohort_id}/onboard. No code change, no redeploy.
+``materials_root`` is the directory consumed by ``app.kb.ingest``. Launching
+a cohort requires only a configuration entry and its approved materials.
 
 The path is read from the COHORTS_CONFIG_PATH environment variable so a
 deployment can point at its own file without editing this module.
@@ -41,8 +40,8 @@ class CohortConfigLoader:
         """Store the path of the cohort configuration file."""
         self.config_path = config_path
 
-    def _read_file(self) -> dict[str, Any]:
-        """Return the parsed config file, or an empty dict when unusable."""
+    def _read_file(self) -> dict[str, dict[str, str]]:
+        """Return normalized, usable cohort entries from the config file."""
         if not os.path.exists(self.config_path):
             return {}
 
@@ -56,7 +55,29 @@ class CohortConfigLoader:
         if not isinstance(data, dict):
             logger.warning("cohort_config_not_an_object", path=self.config_path)
             return {}
-        return data
+
+        valid: dict[str, dict[str, str]] = {}
+        for raw_cohort_id, raw_entry in data.items():
+            cohort_id = normalize_cohort(raw_cohort_id if isinstance(raw_cohort_id, str) else None)
+            if not cohort_id or not isinstance(raw_entry, dict):
+                logger.warning("cohort_config_entry_invalid", cohort_id=str(raw_cohort_id))
+                continue
+
+            name = raw_entry.get("name")
+            materials_root = raw_entry.get("materials_root")
+            if not isinstance(name, str) or not name.strip():
+                logger.warning("cohort_config_name_invalid", cohort_id=cohort_id)
+                continue
+            if not isinstance(materials_root, str) or not materials_root.strip():
+                logger.warning("cohort_config_materials_root_invalid", cohort_id=cohort_id)
+                continue
+
+            valid[cohort_id] = {
+                "name": name.strip(),
+                "materials_root": materials_root.strip(),
+            }
+
+        return valid
 
     def list_cohorts(self) -> list[str]:
         """Return every configured cohort id, sorted for a stable order."""
@@ -114,8 +135,14 @@ def is_servable_cohort(cohort_id: str | None) -> bool:
     whether an item belongs to a cohort, this decides whether the cohort
     exists at all.
     """
-    if not normalize_cohort(cohort_id):
+    normalized = normalize_cohort(cohort_id)
+    if not normalized:
         return False
-    if not cohort_gating_enabled():
-        return True
-    return cohort_config.is_known_cohort(cohort_id)
+    if cohort_gating_enabled():
+        return cohort_config.is_known_cohort(normalized)
+
+    # In a deployment without a cohort file, only the explicitly configured
+    # single default cohort is servable. Accepting any arbitrary ID here would
+    # weaken isolation and contradict the single-cohort fallback contract.
+    default_cohort = normalize_cohort(os.getenv("DEFAULT_COHORT"))
+    return bool(default_cohort and normalized == default_cohort)

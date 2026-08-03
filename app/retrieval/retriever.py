@@ -18,6 +18,7 @@ approved evidence.
 """
 
 import asyncio
+import math
 import os
 from functools import lru_cache
 from typing import Protocol
@@ -132,6 +133,8 @@ def _to_vector_literal(embedding: list[float]) -> str:
     """Render a numeric vector as a pgvector literal like '[1,2,3]'."""
     if not embedding:
         raise ValueError("query embedding must not be empty")
+    if not all(math.isfinite(value) for value in embedding):
+        raise ValueError("query embedding values must be finite")
     return "[" + ",".join(repr(value) for value in embedding) + "]"
 
 
