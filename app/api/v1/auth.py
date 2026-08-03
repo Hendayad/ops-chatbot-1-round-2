@@ -265,7 +265,10 @@ async def login(
             )
 
         token = create_access_token(str(user.id))
-        return TokenResponse(access_token=token.access_token, token_type="bearer", expires_at=token.expires_at)
+        role = "admin" if user.is_ops else "learner"
+        return TokenResponse(
+            access_token=token.access_token, token_type="bearer", expires_at=token.expires_at, role=role
+        )
     except ValueError as ve:
         logger.exception("login_validation_failed", error=str(ve))
         raise HTTPException(status_code=422, detail=str(ve))

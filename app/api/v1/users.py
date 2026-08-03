@@ -202,5 +202,4 @@ async def get_me(
         "username": current_user.username,
         "email": current_user.email,
         "role": current_user.role.value,
-        "is_ops": current_user.is_ops,
     }

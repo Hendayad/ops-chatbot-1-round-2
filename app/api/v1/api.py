@@ -14,10 +14,10 @@ from app.api.v1.auth import router as auth_router
 from app.api.v1.chatbot import router as chatbot_router
 from app.api.v1.progress import router as progress_router
 from app.api.v1.tickets import router as tickets_router
+from app.api.v1.users import router as users_router
 from app.core.logging import logger
 from app.kb.admin_api import router as kb_admin_router
 from app.api.v1.notifications import router as notifications_router
-from app.api.v1 import users
 
 api_router = APIRouter()
 
@@ -30,11 +30,7 @@ api_router.include_router(dashboards_router, prefix="/dashboards", tags=["Dashbo
 api_router.include_router(atrisk_router, prefix="/atrisk", tags=["At-Risk"])
 api_router.include_router(progress_router, prefix="/progress", tags=["Progress Ingestion"])
 api_router.include_router(notification_preferences_router, prefix="/notifications", tags=["Notification Preferences"])
-api_router.include_router(
-    users.router,
-    prefix="/users",
-    tags=["Users"]
-)
+api_router.include_router(users_router, prefix="/users", tags=["Users"])
 api_router.include_router(
     reminders_router,
     prefix="/reminders",
