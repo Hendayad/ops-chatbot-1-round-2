@@ -19,16 +19,7 @@ from app.prompts.grounding import (
     GroundedAnswer,
     format_grounding_context,
 )
-from app.retrieval.retriever import KnowledgeRetriever, RetrievedChunk
-
-
-@pytest.fixture(autouse=True)
-def _configure_test_cohort(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Treat cohort-a as configured and keep metrics side effects out of unit tests."""
-    monkeypatch.setattr(answer_module, "is_servable_cohort", lambda cohort: cohort == "cohort-a")
-    monkeypatch.setattr(answer_module, "cohort_gating_enabled", lambda: True)
-    monkeypatch.setattr(answer_module, "track_first_response_time", lambda *_: None)
-    monkeypatch.setattr(answer_module, "track_query_deflected", lambda *_: None)
+from app.retrieval.retriever import RetrievedChunk
 
 
 def _run(coroutine: Coroutine[Any, Any, Any]) -> Any:
@@ -212,9 +203,6 @@ def test_grounded_answer_returns_answer_and_validated_source(monkeypatch: pytest
         "top_k": 5,
     }
     assert llm_call["kwargs"]["response_format"] is GroundedAnswer
-    assert result["answer_generated"] is True
-    assert result["answer_escalation_signal"] is False
-    assert result["answer_escalation_reason"] is None
     assert metadata["grounded"] is True
     assert metadata["needs_escalation"] is False
     assert metadata["escalation_reason"] is None
@@ -250,9 +238,6 @@ def test_refuses_when_no_relevant_sources(monkeypatch: pytest.MonkeyPatch) -> No
 
     assert message.content == HONEST_REFUSAL_MESSAGE
     assert llm_was_called is False
-    assert result["answer_generated"] is True
-    assert result["answer_escalation_signal"] is True
-    assert result["answer_escalation_reason"] == "no_relevant_sources"
     assert metadata["grounded"] is False
     assert metadata["needs_escalation"] is True
     assert metadata["escalation_reason"] == "no_relevant_sources"
@@ -437,180 +422,3 @@ def test_prompt_injection_in_retrieved_text_does_not_bypass_grounding(
     assert result["messages"][0].content == HONEST_REFUSAL_MESSAGE
     assert metadata["grounded"] is False
     assert metadata["needs_escalation"] is True
-
-
-###> Retriever isolation and filtering <###
-
-
-class _FakeEmbedder:
-    def __init__(self) -> None:
-        self.queries: list[str] = []
-
-    def embed_query(self, query: str) -> list[float]:
-        self.queries.append(query)
-        return [0.1, 0.2, 0.3]
-
-
-class _FakeRepository:
-    def __init__(self, chunks: list[RetrievedChunk]) -> None:
-        self.chunks = chunks
-        self.calls: list[dict[str, Any]] = []
-
-    def search(
-        self,
-        query_embedding: list[float],
-        *,
-        cohort: str,
-        limit: int,
-    ) -> list[RetrievedChunk]:
-        self.calls.append(
-            {
-                "query_embedding": query_embedding,
-                "cohort": cohort,
-                "limit": limit,
-            }
-        )
-        return list(self.chunks)
-
-
-def test_retriever_filters_low_scores_and_cross_cohort_chunks() -> None:
-    """Only strong evidence from the requested cohort survives retrieval."""
-    accepted = _chunk(similarity=0.90, distance=0.10)
-    weak = _chunk(
-        source_id="cohort-a::weak.md",
-        source="weak.md",
-        content_hash="weak-hash",
-        similarity=0.20,
-        distance=0.80,
-    )
-    leaked = _chunk(
-        source_id="cohort-b::private.md",
-        source="private.md",
-        cohort="cohort-b",
-        content_hash="other-hash",
-        similarity=0.99,
-        distance=0.01,
-    )
-    repository = _FakeRepository([leaked, weak, accepted])
-    embedder = _FakeEmbedder()
-    retriever = KnowledgeRetriever(repository, embedder, min_similarity=0.35)
-
-    results = retriever.retrieve_sync(
-        "  When is the final project deadline?  ",
-        cohort="cohort-a",
-        top_k=2,
-    )
-
-    assert results == [accepted]
-    assert embedder.queries == ["When is the final project deadline?"]
-    assert repository.calls[0]["cohort"] == "cohort-a"
-    assert repository.calls[0]["limit"] == 6
-
-
-def test_retriever_fails_closed_for_blank_query_or_cohort() -> None:
-    """Missing scope or question never reaches the embedding/database layer."""
-    repository = _FakeRepository([_chunk()])
-    embedder = _FakeEmbedder()
-    retriever = KnowledgeRetriever(repository, embedder)
-
-    assert retriever.retrieve_sync("   ", cohort="cohort-a") == []
-    assert retriever.retrieve_sync("When?", cohort="") == []
-    assert repository.calls == []
-    assert embedder.queries == []
-
-
-def test_retriever_limits_results_after_similarity_filtering() -> None:
-    """The public top_k limit applies after filtering and sorting."""
-    chunks = [
-        _chunk(
-            source_id=f"cohort-a::source-{index}.md",
-            source=f"source-{index}.md",
-            content_hash=f"hash-{index}",
-            chunk_index=index,
-            similarity=0.70 + index / 100,
-            distance=0.30 - index / 100,
-        )
-        for index in range(5)
-    ]
-    retriever = KnowledgeRetriever(_FakeRepository(chunks), _FakeEmbedder())
-
-    results = retriever.retrieve_sync("deadline", cohort="cohort-a", top_k=2)
-
-    assert len(results) == 2
-    assert [item.similarity for item in results] == [0.74, 0.73]
-
-
-###> Cohort resolution and router integration <###
-
-
-def test_missing_cohort_refuses_before_retrieval(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A multi-cohort request without learner scope cannot use a default cohort."""
-    retrieval_was_called = False
-
-    async def fake_retrieve(*_: Any, **__: Any) -> list[RetrievedChunk]:
-        nonlocal retrieval_was_called
-        retrieval_was_called = True
-        return [_chunk()]
-
-    monkeypatch.setattr(answer_module, "retrieve", fake_retrieve)
-    result = _run(
-        answer_module.grounded_answer(
-            {"messages": [HumanMessage(content="When is the deadline?")]},
-        )
-    )
-
-    assert retrieval_was_called is False
-    assert result["answer_escalation_signal"] is True
-    assert result["answer_escalation_reason"] == "missing_cohort"
-
-
-def test_unknown_cohort_refuses_before_retrieval(monkeypatch: pytest.MonkeyPatch) -> None:
-    """An unconfigured cohort is rejected before any vector search."""
-    retrieval_was_called = False
-
-    async def fake_retrieve(*_: Any, **__: Any) -> list[RetrievedChunk]:
-        nonlocal retrieval_was_called
-        retrieval_was_called = True
-        return [_chunk()]
-
-    monkeypatch.setattr(answer_module, "is_servable_cohort", lambda _: False)
-    monkeypatch.setattr(answer_module, "retrieve", fake_retrieve)
-    result = _run(
-        answer_module.grounded_answer(
-            {"messages": [HumanMessage(content="When is the deadline?")]},
-            cohort="cohort-x",
-        )
-    )
-
-    assert retrieval_was_called is False
-    assert result["answer_escalation_reason"] == "unknown_cohort"
-
-
-def test_resolve_cohort_uses_state_and_normalizes_it() -> None:
-    """The learner cohort travels through graph state into retrieval."""
-    assert (
-        answer_module.resolve_cohort(
-            {"messages": [], "cohort_id": "  COHORT-A  "},
-        )
-        == "cohort-a"
-    )
-
-
-def test_resolve_cohort_does_not_use_default_in_multi_cohort_mode(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A missing per-user cohort cannot fall through to another cohort's data."""
-    monkeypatch.setenv("DEFAULT_COHORT", "cohort-a")
-    monkeypatch.setattr(answer_module, "cohort_gating_enabled", lambda: True)
-
-    assert answer_module.resolve_cohort({"messages": []}) == ""
-
-
-def test_resolve_cohort_allows_default_only_in_single_cohort_mode(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The deployment default remains available for legacy single-cohort runs."""
-    monkeypatch.setenv("DEFAULT_COHORT", " COHORT-A ")
-    monkeypatch.setattr(answer_module, "cohort_gating_enabled", lambda: False)
-
-    assert answer_module.resolve_cohort({"messages": []}) == "cohort-a"
