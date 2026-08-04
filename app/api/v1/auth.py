@@ -228,22 +228,13 @@ async def register_user(request: Request, user_data: UserCreate):
 @router.post("/login", response_model=TokenResponse)
 @limiter.limit(settings.RATE_LIMIT_ENDPOINTS["login"][0])
 async def login(
-    request: Request, email: str = Form(...), password: str = Form(...), grant_type: str = Form(default="password")
+    request: Request,
+    email: str = Form(...),
+    password: str = Form(...),
+    grant_type: str = Form(default="password"),
 ):
-    """Login a user.
+    """Login a user."""
 
-    Args:
-        request: The FastAPI request object for rate limiting.
-        email: User's email
-        password: User's password
-        grant_type: Must be "password"
-
-    Returns:
-        TokenResponse: Access token information
-
-    Raises:
-        HTTPException: If credentials are invalid
-    """
     try:
         # Sanitize inputs
         email = sanitize_string(email)
@@ -257,22 +248,41 @@ async def login(
                 detail="Unsupported grant type. Must be 'password'",
             )
 
+        # Get user
         user = await db_service.get_user_by_email(email)
-        if not user or not user.verify_password(password):
+
+        if user is None or not user.verify_password(password):
             raise HTTPException(
                 status_code=401,
                 detail="Incorrect email or password",
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
+        # Create JWT
         token = create_access_token(str(user.id))
-        role = "admin" if user.is_ops else "learner"
-        return TokenResponse(
-            access_token=token.access_token, token_type="bearer", expires_at=token.expires_at, role=role
+
+        logger.info(
+            "user_logged_in",
+            user_id=user.id,
+            role=user.role.value,
         )
+
+        return TokenResponse(
+            access_token=token.access_token,
+            token_type="bearer",
+            expires_at=token.expires_at,
+            role=user.role.value,   # <-- returns the actual database role
+        )
+
     except ValueError as ve:
-        logger.exception("login_validation_failed", error=str(ve))
-        raise HTTPException(status_code=422, detail=str(ve))
+        logger.exception(
+            "login_validation_failed",
+            error=str(ve),
+        )
+        raise HTTPException(
+            status_code=422,
+            detail=str(ve),
+        )
 
 
 @router.post("/session", response_model=SessionResponse)
