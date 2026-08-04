@@ -2,13 +2,13 @@ from sqlmodel import select
 
 from app.models.user import User
 from app.profile.schema import LearnerProfile
-from app.services.database import DatabaseService
+from app.services.database import database_service
 
 
 class DatabaseProfileRepository:
     def __init__(self):
         """Initialize the database repository."""
-        self.db = DatabaseService()
+        self.db = database_service
 
     async def load(self, user_id: str) -> LearnerProfile:
 

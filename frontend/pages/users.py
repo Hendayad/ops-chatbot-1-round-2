@@ -2,15 +2,10 @@ import streamlit as st
 import requests
 
 from components.styles import page_header, role_badge_html
-
 from api.config import BASE_URL
 
-ROLE_OPTIONS = ["LEARNER", "ADMIN","PROGRAM_LEAD"]
-
-# No endpoint currently returns the list of valid groups/projects, so these
-# are placeholder options — swap in a real fetch once one exists.
-GROUP_OPTIONS = ["Unassigned", "Group A", "Group B", "Group C", "Group D"]
-PROJECT_OPTIONS = ["Unassigned", "CodeBook", "OpsAgent AI", "Capstone Project"]
+ROLE_OPTIONS = ["LEARNER", "ADMIN", "PROGRAM_LEAD"]
+COHORT_OPTIONS = ["Unassigned", "Group A", "Group B", "Group C", "Group D"]
 
 
 def _index_or_zero(options, value):
@@ -23,7 +18,7 @@ def show_users():
         "👥",
         "User Management",
         subtitle="View learners and staff.",
-        eyebrow="Admin",
+        eyebrow="Program Lead",
     )
 
     try:
@@ -50,17 +45,14 @@ def show_users():
 
     for user in users:
 
-        is_admin = user["role"] == "admin"
+        is_program_lead = user["role"] == "program_lead"
 
         with st.container(border=True):
 
-            info_col, role_col, group_col, project_col, action_col = st.columns(
-                [2.4, 1.6, 1.6, 1.8, 1]
+            info_col, role_col, cohort_col, action_col = st.columns(
+                [2.8, 1.8, 1.8, 1]
             )
 
-            # -----------------------------
-            # User information
-            # -----------------------------
             with info_col:
                 st.write(f"**{user['email']}**")
                 st.markdown(
@@ -68,69 +60,41 @@ def show_users():
                     unsafe_allow_html=True,
                 )
 
-            # -----------------------------
-            # Role
-            # -----------------------------
             with role_col:
                 new_role = st.selectbox(
                     "Role",
                     ROLE_OPTIONS,
                     index=_index_or_zero(
                         ROLE_OPTIONS,
-                        user["role"],
+                        user["role"].upper(),
                     ),
                     key=f"role_{user['id']}",
-                    disabled=is_admin,
+                    disabled=is_program_lead,
                 )
 
-            # -----------------------------
-            # Group
-            # -----------------------------
-            with group_col:
+            is_learner_selected = (not is_program_lead) and new_role == "LEARNER"
 
-                if is_admin:
-                    st.markdown("**Group**")
-                    st.caption("—")
-                    new_group = None
-                else:
-                    new_group = st.selectbox(
-                        "Group",
-                        GROUP_OPTIONS,
+            with cohort_col:
+                if is_learner_selected:
+                    new_cohort = st.selectbox(
+                        "Cohort",
+                        COHORT_OPTIONS,
                         index=_index_or_zero(
-                            GROUP_OPTIONS,
-                            user.get("group"),
+                            COHORT_OPTIONS,
+                            user.get("cohort"),
                         ),
-                        key=f"group_{user['id']}",
+                        key=f"cohort_{user['id']}",
                     )
-
-            # -----------------------------
-            # Project
-            # -----------------------------
-            with project_col:
-
-                if is_admin:
-                    st.markdown("**Project**")
-                    st.caption("—")
-                    new_project = None
                 else:
-                    new_project = st.selectbox(
-                        "Project",
-                        PROJECT_OPTIONS,
-                        index=_index_or_zero(
-                            PROJECT_OPTIONS,
-                            user.get("project"),
-                        ),
-                        key=f"project_{user['id']}",
-                    )
+                    st.markdown("**Cohort**")
+                    st.caption("—")
+                    new_cohort = None
 
-            # -----------------------------
-            # Update button
-            # -----------------------------
             with action_col:
 
                 st.write("")
 
-                if is_admin:
+                if is_program_lead:
                     st.button(
                         "Update",
                         key=f"btn_{user['id']}",
@@ -140,10 +104,11 @@ def show_users():
 
                 else:
 
+                    current_cohort = user.get("cohort") or "Unassigned"
+
                     unchanged = (
-                        new_role == user["role"]
-                        and new_group == user.get("group", "Unassigned")
-                        and new_project == user.get("project", "Unassigned")
+                        new_role.lower() == user["role"]
+                        and (new_cohort or "Unassigned") == current_cohort
                     )
 
                     if st.button(
@@ -154,9 +119,8 @@ def show_users():
                     ):
 
                         payload = {
-                            "role": new_role,
-                            "group": new_group,
-                            "project": new_project,
+                            "role": new_role.lower(),
+                            "cohort": new_cohort if is_learner_selected else None,
                         }
 
                         try:
@@ -175,9 +139,7 @@ def show_users():
                                 st.rerun()
 
                             else:
-                                st.error(
-                                    "Couldn't update this user. Please try again."
-                                )
+                                st.error("Couldn't update this user. Please try again.")
 
                         except requests.RequestException as e:
                             st.error(f"Couldn't reach the backend: {e}")

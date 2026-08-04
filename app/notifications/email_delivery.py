@@ -6,9 +6,9 @@ from email.message import EmailMessage
 
 from app.core.config import settings
 from app.schemas.notification import Notification
-from app.services.database import DatabaseService
+from app.services.database import database_service
 
-db_service = DatabaseService()
+db_service = database_service
 
 
 def send_email_reminder(notification: Notification) -> None:

@@ -37,7 +37,7 @@ from app.atrisk.detector import DetectionResult
 from app.models.notification import NotificationRecord
 from app.scheduler.runner import run_notification
 from app.schemas.notification import Notification, NotificationPayload, NotificationStatus, NotificationType
-from app.services.database import DatabaseService
+from app.services.database import database_service
 
 # F2.4: frequency cap — don't nudge the same learner more than once per this many days.
 NUDGE_FREQUENCY_DAYS_DEFAULT = 7
@@ -97,7 +97,7 @@ def _last_sent_at(learner_id: str) -> Optional[datetime]:
     created_at closely tracks the actual send time without needing a
     dedicated column/migration.
     """
-    db_service = DatabaseService()
+    db_service = database_service
     with db_service.get_session_maker() as session:
         record = session.exec(
             select(NotificationRecord)

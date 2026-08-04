@@ -5,13 +5,13 @@ from sqlalchemy import asc
 from app.api.v1.auth import get_current_user
 from app.models.reminder_event import ReminderEvent
 from app.models.notification_preference import NotificationPreference
-from app.services.database import DatabaseService
+from app.services.database import database_service
 from app.schemas.notification import NotificationType
 
 
 router = APIRouter()
 
-db = DatabaseService()
+db = database_service
 
 
 @router.get("")
