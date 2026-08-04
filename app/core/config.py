@@ -146,6 +146,7 @@ class Settings:
         self.LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
 
         # LangGraph Configuration
+        self.GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
         self.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
         self.DEFAULT_LLM_MODEL = os.getenv("DEFAULT_LLM_MODEL", "gpt-5-mini")
         self.SESSION_NAMING_ENABLED = os.getenv("SESSION_NAMING_ENABLED", "true").lower() == "true"
