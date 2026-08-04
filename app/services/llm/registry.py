@@ -24,38 +24,40 @@ class LLMRegistry:
     methods to retrieve them by name with optional argument overrides.
     """
 
-    # NOTE: this team's shared LiteLLM proxy key (see OPENAI_BASE_URL in .env)
-    # is currently restricted to Gemini models only (confirmed via GET /v1/models).
-    # These entries replace the previous GPT-5 lineup, which this key cannot access.
+    # NOTE: as of 2026-08-04 this team switched from the shared LiteLLM proxy
+    # to hitting Google's native Gemini endpoint directly (see OPENAI_BASE_URL
+    # in .env), each teammate using their own personal Gemini API key. Model
+    # IDs here are plain Gemini names (no "gemini/" provider prefix, which was
+    # only needed for the old LiteLLM proxy routing).
     LLMS: List[Dict[str, Any]] = [
         {
-            "name": "gemini-2.5-flash",
+            "name": "gemini-3.6-flash",
             "llm": ChatOpenAI(
-                model="gemini/gemini-2.5-flash",
+                model="gemini-3.6-flash",
                 api_key=_API_KEY,
                 model_kwargs=_TOKEN_LIMIT,
             ),
         },
         {
-            "name": "gemini-2.5-flash-lite",
+            "name": "gemini-flash-latest",
             "llm": ChatOpenAI(
-                model="gemini/gemini-2.5-flash-lite",
+                model="gemini-flash-latest",
                 api_key=_API_KEY,
                 model_kwargs=_TOKEN_LIMIT,
             ),
         },
         {
-            "name": "gemini-2.0-flash",
+            "name": "gemini-flash-lite-latest",
             "llm": ChatOpenAI(
-                model="gemini/gemini-2.0-flash",
+                model="gemini-flash-lite-latest",
                 api_key=_API_KEY,
                 model_kwargs=_TOKEN_LIMIT,
             ),
         },
         {
-            "name": "gemini-2.5-pro",
+            "name": "gemini-pro-latest",
             "llm": ChatOpenAI(
-                model="gemini/gemini-2.5-pro",
+                model="gemini-pro-latest",
                 api_key=_API_KEY,
                 model_kwargs=_TOKEN_LIMIT,
             ),
