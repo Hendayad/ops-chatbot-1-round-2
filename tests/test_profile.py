@@ -69,3 +69,33 @@ def test_missing_field_detector_and_inchat_collection_flow() -> None:
     assert turn2.profile.preferred_name == "Ahmed Magdi"
     assert "timezone" in (turn2.prompt or "").lower()
 
+
+def test_postgres_profile_repository() -> None:
+    import app.models  # noqa: F401
+    from sqlmodel import SQLModel, Session, create_engine
+    from app.profile.collector import PostgresProfileRepository
+    from app.profile.schema import LearnerProfile
+
+    engine = create_engine("sqlite:///:memory:")
+    SQLModel.metadata.create_all(engine)
+
+    def session_factory():
+        return Session(engine)
+
+    repo = PostgresProfileRepository(session_factory=session_factory)
+
+    # Initial load returns empty profile
+    initial = asyncio.run(repo.load("user-100"))
+    assert initial.preferred_name is None
+
+    # Save profile to DB
+    profile = LearnerProfile(preferred_name="Sara", timezone="Africa/Cairo", cohort="Fall 2026")
+    asyncio.run(repo.save("user-100", profile))
+
+    # Reload profile from DB
+    loaded = asyncio.run(repo.load("user-100"))
+    assert loaded.preferred_name == "Sara"
+    assert loaded.timezone == "Africa/Cairo"
+    assert loaded.cohort == "Fall 2026"
+
+
