@@ -10,10 +10,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
 
-from app.core.config import (
-    Environment,
-    settings,
-)
+from app.core.config import settings
 from app.core.logging import logger
 
 _TOKEN_LIMIT: Dict[str, Any] = {"max_completion_tokens": settings.MAX_TOKENS}
@@ -27,43 +24,40 @@ class LLMRegistry:
     methods to retrieve them by name with optional argument overrides.
     """
 
+    # NOTE: this team's shared LiteLLM proxy key (see OPENAI_BASE_URL in .env)
+    # is currently restricted to Gemini models only (confirmed via GET /v1/models).
+    # These entries replace the previous GPT-5 lineup, which this key cannot access.
     LLMS: List[Dict[str, Any]] = [
         {
-            "name": "gpt-5-mini",
+            "name": "gemini-2.5-flash",
             "llm": ChatOpenAI(
-                model="gpt-5-mini",
+                model="gemini/gemini-2.5-flash",
                 api_key=_API_KEY,
                 model_kwargs=_TOKEN_LIMIT,
-                reasoning={"effort": "low"},
             ),
         },
         {
-            "name": "gpt-5.4",
+            "name": "gemini-2.5-flash-lite",
             "llm": ChatOpenAI(
-                model="gpt-5",
+                model="gemini/gemini-2.5-flash-lite",
                 api_key=_API_KEY,
                 model_kwargs=_TOKEN_LIMIT,
-                reasoning={"effort": "medium"},
             ),
         },
         {
-            "name": "gpt-5.4-nano",
+            "name": "gemini-2.0-flash",
             "llm": ChatOpenAI(
-                model="gpt-5.4-nano",
+                model="gemini/gemini-2.0-flash",
                 api_key=_API_KEY,
                 model_kwargs=_TOKEN_LIMIT,
-                reasoning={"effort": "low"},
             ),
         },
         {
-            "name": "gpt-5",
+            "name": "gemini-2.5-pro",
             "llm": ChatOpenAI(
-                model="gpt-5",
+                model="gemini/gemini-2.5-pro",
                 api_key=_API_KEY,
                 model_kwargs=_TOKEN_LIMIT,
-                top_p=0.95 if settings.ENVIRONMENT == Environment.PRODUCTION else 0.8,
-                presence_penalty=0.1 if settings.ENVIRONMENT == Environment.PRODUCTION else 0.0,
-                frequency_penalty=0.1 if settings.ENVIRONMENT == Environment.PRODUCTION else 0.0,
             ),
         },
     ]
