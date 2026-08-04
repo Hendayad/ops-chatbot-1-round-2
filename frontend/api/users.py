@@ -53,3 +53,18 @@ def get_current_user(token):
     response.raise_for_status()
 
     return response.json()
+
+
+def get_teammates(token):
+
+    response = requests.get(
+        f"{BASE_URL}/users/me/teammates",
+        headers={
+            "Authorization": f"Bearer {token}"
+        },
+    )
+
+
+    response.raise_for_status()
+
+    return response.json()

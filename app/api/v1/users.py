@@ -202,4 +202,49 @@ async def get_me(
         "username": current_user.username,
         "email": current_user.email,
         "role": current_user.role.value,
+        "cohort": current_user.cohort,
     }
+
+
+# -----------------------------
+# Current user's group / teammates
+# -----------------------------
+
+@router.get("/me/teammates")
+async def get_my_teammates(
+    current_user: User = Depends(get_current_user),
+):
+    """Return the current user's group (cohort) and the teammates in it.
+
+    A learner with no cohort assigned yet gets an empty teammate list rather
+    than an error, so the frontend can show "not assigned yet" instead of
+    crashing.
+    """
+    if not current_user.cohort:
+        return {
+            "cohort": None,
+            "teammates": [],
+        }
+
+    with db_service.get_session_maker() as session:
+
+        teammates = session.exec(
+            select(User)
+            .where(
+                User.cohort == current_user.cohort,
+                User.id != current_user.id,
+            )
+        ).all()
+
+        return {
+            "cohort": current_user.cohort,
+            "teammates": [
+                {
+                    "id": user.id,
+                    "username": user.username,
+                    "email": user.email,
+                    "role": user.role.value,
+                }
+                for user in teammates
+            ],
+        }
