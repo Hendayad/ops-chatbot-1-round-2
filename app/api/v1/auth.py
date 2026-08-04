@@ -47,6 +47,7 @@ from app.utils.sanitization import (
 router = APIRouter()
 security = HTTPBearer()
 db_service = database_service
+db_service = database_service  # shared singleton -- do not construct a new pool here
 
 
 async def get_current_user(
@@ -265,12 +266,9 @@ async def login(
             )
 
         token = create_access_token(str(user.id))
-
+        role = "admin" if user.is_ops else "learner"
         return TokenResponse(
-            access_token=token.access_token,
-            token_type="bearer",
-            expires_at=token.expires_at,
-            role=user.role.value
+            access_token=token.access_token, token_type="bearer", expires_at=token.expires_at, role=role
         )
     except ValueError as ve:
         logger.exception("login_validation_failed", error=str(ve))

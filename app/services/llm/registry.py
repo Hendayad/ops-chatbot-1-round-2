@@ -10,10 +10,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
 
-from app.core.config import (
-    Environment,
-    settings,
-)
+from app.core.config import settings
 from app.core.logging import logger
 
 _TOKEN_LIMIT: Dict[str, Any] = {"max_completion_tokens": settings.MAX_TOKENS}
@@ -27,43 +24,42 @@ class LLMRegistry:
     methods to retrieve them by name with optional argument overrides.
     """
 
+    # NOTE: as of 2026-08-04 this team switched from the shared LiteLLM proxy
+    # to hitting Google's native Gemini endpoint directly (see OPENAI_BASE_URL
+    # in .env), each teammate using their own personal Gemini API key. Model
+    # IDs here are plain Gemini names (no "gemini/" provider prefix, which was
+    # only needed for the old LiteLLM proxy routing).
     LLMS: List[Dict[str, Any]] = [
         {
-            "name": "gpt-5-mini",
+            "name": "gemini-3.6-flash",
             "llm": ChatOpenAI(
-                model="gpt-5-mini",
+                model="gemini-3.6-flash",
                 api_key=_API_KEY,
                 model_kwargs=_TOKEN_LIMIT,
-                reasoning={"effort": "low"},
             ),
         },
         {
-            "name": "gpt-5.4",
+            "name": "gemini-flash-latest",
             "llm": ChatOpenAI(
-                model="gpt-5",
+                model="gemini-flash-latest",
                 api_key=_API_KEY,
                 model_kwargs=_TOKEN_LIMIT,
-                reasoning={"effort": "medium"},
             ),
         },
         {
-            "name": "gpt-5.4-nano",
+            "name": "gemini-flash-lite-latest",
             "llm": ChatOpenAI(
-                model="gpt-5.4-nano",
+                model="gemini-flash-lite-latest",
                 api_key=_API_KEY,
                 model_kwargs=_TOKEN_LIMIT,
-                reasoning={"effort": "low"},
             ),
         },
         {
-            "name": "gpt-5",
+            "name": "gemini-pro-latest",
             "llm": ChatOpenAI(
-                model="gpt-5",
+                model="gemini-pro-latest",
                 api_key=_API_KEY,
                 model_kwargs=_TOKEN_LIMIT,
-                top_p=0.95 if settings.ENVIRONMENT == Environment.PRODUCTION else 0.8,
-                presence_penalty=0.1 if settings.ENVIRONMENT == Environment.PRODUCTION else 0.0,
-                frequency_penalty=0.1 if settings.ENVIRONMENT == Environment.PRODUCTION else 0.0,
             ),
         },
     ]

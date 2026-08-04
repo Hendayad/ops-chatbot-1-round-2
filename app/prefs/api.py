@@ -16,7 +16,7 @@ from app.prefs.model import (
 
 router = APIRouter()
 
-db_service = database_service
+db_service = database_service  # shared singleton -- do not construct a new pool here
 
 
 @router.get(
@@ -58,3 +58,33 @@ async def edit_preferences(
             deadline_reminders=prefs.deadline_reminders,
             nudges=prefs.nudges,
         )
+
+
+@router.get("")
+async def list_notifications(
+    current_user: User = Depends(get_current_user),
+):
+    """List notifications for the current user.
+
+    Minimal stub: the backend has a Notification model and a notification-sending
+    service (for nudges, reminders, etc.) but no REST endpoint was ever built to
+    expose a user's notification list to the frontend. This returns an empty list
+    so the frontend loads without crashing, rather than faking real data. The full
+    feature (persisting per-user notifications and listing them here) is separate,
+    pre-existing scope -- flag it to the team rather than building it under deadline
+    pressure.
+    """
+    return []
+
+
+@router.patch("/{notification_id}/read")
+async def mark_notification_read(
+    notification_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Mark a notification as read.
+
+    Minimal stub matching list_notifications above -- always acknowledges since no
+    real per-user notifications are exposed yet.
+    """
+    return {"id": notification_id, "is_read": True}

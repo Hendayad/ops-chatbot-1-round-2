@@ -61,7 +61,7 @@ def send_notification(
     same job), reuse that record instead of treating it as a duplicate.
     Only after delivery succeeds is the record marked SENT.
     """
-    db_service = database_service
+    db_service = database_service  # shared singleton -- do not construct a new pool here
     with db_service.get_session_maker() as session:
         record = get_existing_record(session, notification.dedup_key)
 

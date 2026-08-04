@@ -2,6 +2,7 @@ import streamlit as st
 
 from components.styles import page_header
 from api.notifications import get_preferences, update_preferences
+from api.users import get_teammates
 
 
 def show_settings():
@@ -65,6 +66,42 @@ def show_settings():
                 key="settings_user_id",
                 label_visibility="collapsed",
             )
+
+    # -------------------------
+    # Your Group
+    # Learner only
+    # -------------------------
+
+    if role == "learner":
+
+        st.write("")
+
+        with st.container(border=True):
+
+            st.subheader("👥 Your Group")
+
+            token = st.session_state.get("token")
+
+            try:
+                team_info = get_teammates(token)
+            except Exception:
+                team_info = None
+
+            if not team_info or not team_info.get("cohort"):
+                st.info("You haven't been assigned to a group yet.")
+            else:
+                st.markdown(f"**Group:** {team_info['cohort']}")
+
+                teammates = team_info.get("teammates", [])
+
+                if not teammates:
+                    st.caption("No other learners in your group yet.")
+                else:
+                    st.caption(f"{len(teammates)} teammate(s) in your group:")
+
+                    for mate in teammates:
+                        display_name = mate.get("username") or mate.get("email", "Unknown")
+                        st.markdown(f"- **{display_name}** &nbsp;·&nbsp; {mate.get('email', '')}")
 
     # -------------------------
     # Notification Preferences
