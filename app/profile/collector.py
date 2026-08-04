@@ -8,9 +8,12 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from pydantic import ValidationError
+from sqlmodel import Session, select
 
+from app.models.profile import LearnerProfileRecord
 from app.profile.repository import DatabaseProfileRepository
 from app.profile.schema import LearnerProfile, ProfileField
+from app.services.database import database_service
 
 ProfileLoader = Callable[[str], Awaitable[LearnerProfile]]
 ProfileSaver = Callable[[str, LearnerProfile], Awaitable[None]]
@@ -56,6 +59,49 @@ class InMemoryProfileRepository:
         self.profiles[user_id] = profile
 
 
+class PostgresProfileRepository:
+    """Production database repository using Postgres/SQLModel."""
+
+    def __init__(self, session_factory: Callable[[], Session] | None = None) -> None:
+        """Initialize with database session provider."""
+        self._session_factory = session_factory or (lambda: Session(database_service.engine))
+
+    async def load(self, user_id: str) -> LearnerProfile:
+        """Load learner profile from database or return default empty profile."""
+        with self._session_factory() as session:
+            record = session.exec(
+                select(LearnerProfileRecord).where(LearnerProfileRecord.user_id == str(user_id))
+            ).first()
+            if not record:
+                return LearnerProfile()
+            return LearnerProfile(
+                preferred_name=record.preferred_name,
+                timezone=record.timezone,
+                cohort=record.cohort,
+            )
+
+    async def save(self, user_id: str, profile: LearnerProfile) -> None:
+        """Save or update learner profile in database."""
+        with self._session_factory() as session:
+            record = session.exec(
+                select(LearnerProfileRecord).where(LearnerProfileRecord.user_id == str(user_id))
+            ).first()
+            if record is None:
+                record = LearnerProfileRecord(
+                    user_id=str(user_id),
+                    preferred_name=profile.preferred_name,
+                    timezone=profile.timezone,
+                    cohort=profile.cohort,
+                )
+                session.add(record)
+            else:
+                record.preferred_name = profile.preferred_name
+                record.timezone = profile.timezone
+                record.cohort = profile.cohort
+                session.add(record)
+            session.commit()
+
+
 class ProfileCollector:
     """Collect required profile fields in a predictable validated sequence."""
 
@@ -69,9 +115,11 @@ class ProfileCollector:
         self._save = save
 
     @classmethod
-    def with_repository(cls, repository):
-        """Create collector from any repository implementing load/save."""
-        return cls(repository.load, repository.save)
+    def with_repository(
+        cls, repository: InMemoryProfileRepository | PostgresProfileRepository | DatabaseProfileRepository | None = None
+    ) -> "ProfileCollector":
+        repo = repository or DatabaseProfileRepository()
+        return cls(repo.load, repo.save)
 
     async def start(self, user_id: str) -> CollectionTurn:
         """Return the first missing-field prompt."""
@@ -143,11 +191,10 @@ def missing_field_detector(
 async def inchat_collection_flow(
     user_id: str,
     reply: str | None = None,
-    repository=None,
+    repository: InMemoryProfileRepository | PostgresProfileRepository | DatabaseProfileRepository | None = None,
 ) -> CollectionTurn:
     """One-field-at-a-time collection flow."""
     repo = repository or DatabaseProfileRepository()
-
     collector = ProfileCollector.with_repository(repo)
 
     if reply is None:
@@ -162,6 +209,7 @@ async def inchat_collection_flow(
 __all__ = [
     "CollectionTurn",
     "InMemoryProfileRepository",
+    "PostgresProfileRepository",
     "ProfileCollector",
     "ProfileLoader",
     "ProfileSaver",

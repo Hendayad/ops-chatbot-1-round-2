@@ -21,9 +21,12 @@ from app.atrisk.progress_store import LearnerProgressRecord  # noqa: F401
 from app.models.notification_preference import NotificationPreference  # noqa: F401
 from app.models.escalation_ticket import EscalationTicket  # noqa: F401
 from app.models.reminder_event import ReminderEvent  # noqa: F401
+from app.models.profile import LearnerProfileRecord  # noqa: F401
 
 # Alembic Config object
 config = context.config
+
+from urllib.parse import quote_plus
 
 # Set up Python logging from the ini file
 if config.config_file_name is not None:
