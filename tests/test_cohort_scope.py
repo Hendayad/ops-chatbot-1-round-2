@@ -251,6 +251,15 @@ def test_isolation_eval_covers_the_real_retrieval_and_answer_paths():
     assert any(case.startswith("answer_node_") for case in covered)
 
 
+def test_adversarial_cohort_leakage_suite_passes():
+    """Run the adversarial leakage suite to verify cross-cohort queries are blocked."""
+    from evals.adversarial_cohort_leakage import run_adversarial_suite
+
+    report = run_adversarial_suite()
+    assert report["failed_cases"] == 0
+    assert report["isolation_success_rate"] == 100.0
+
+
 # --- Config-driven gating: which cohorts may be served at all ---
 
 
