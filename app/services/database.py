@@ -6,8 +6,6 @@ from typing import (
     Optional,
 )
 
-from urllib.parse import quote_plus
-
 from fastapi import HTTPException
 from sqlalchemy.engine import URL
 from sqlalchemy.exc import SQLAlchemyError

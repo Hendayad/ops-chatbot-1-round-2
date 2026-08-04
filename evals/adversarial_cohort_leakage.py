@@ -54,6 +54,7 @@ class LeakyAdversarialRepository:
     """
 
     def __init__(self, chunks: list[RetrievedChunk]) -> None:
+        """Initialize with fixed chunks to return."""
         self._chunks = chunks
 
     def search(self, query_embedding: list[float], *, cohort: str, limit: int) -> list[RetrievedChunk]:
@@ -65,6 +66,7 @@ class StaticQueryEmbedder:
     """Deterministic static query embedder."""
 
     def embed_query(self, query: str) -> list[float]:
+        """Embed a query string into a static vector."""
         return [0.1, 0.2, 0.3, 0.4]
 
 

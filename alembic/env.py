@@ -26,8 +26,6 @@ from app.models.profile import LearnerProfileRecord  # noqa: F401
 # Alembic Config object
 config = context.config
 
-from urllib.parse import quote_plus
-
 # Set up Python logging from the ini file
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
