@@ -154,38 +154,82 @@ Authorization: Bearer <ADMIN_JWT_TOKEN>
 
 Every material loaded from `materials/fall-2026/` is automatically stamped with `cohort: "fall-2026"`. Existing cohorts remain unaffected.
 
----
+## 4. Running the Evaluation Suite from a Fresh Checkout
 
-## 4. Evaluation Suite & Verification
+Follow these step-by-step instructions to run the full evaluation suite and generate reports starting from a clean repository clone:
 
-Multi-cohort isolation is verified by two complementary evaluation suites located under `evals/`:
+### Step 1: Clone Repository & Setup Environment
+```powershell
+git clone https://github.com/MoHatemTC/ops-chatbot-1-round-2.git
+cd ops-chatbot-1-round-2
 
-### 4.1 Cohort Isolation Structural Suite (`evals/cohort_isolation.py`)
-Verifies structural scoping rules, leaky repository filtering, answer node citation validation, and config gating.
+# Initialize Python virtual environment
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1   # On Windows (or source .venv/bin/activate on Linux/macOS)
 
-Run:
+# Install dependencies
+pip install -r requirements.txt
+```
+
+### Step 2: Set Test Environment Variables
+```powershell
+$env:APP_ENV="test"
+$env:OPENAI_API_KEY="test-key"
+```
+
+### Step 3: Run the Structural Cohort Isolation Suite
+Verifies structural scoping rules, leaky repository filtering, answer node citation validation, and config gating:
 ```powershell
 python -m evals.cohort_isolation
 ```
+**Expected Output**:
+```text
+[PASS] scope_rules_cohort-a - isolation_score=1.00
+[PASS] scope_rules_cohort-b - isolation_score=1.00
+[PASS] scope_rules_missing_cohort_None - isolation_score=1.00
+[PASS] scope_rules_missing_cohort_'' - isolation_score=1.00
+[PASS] scope_rules_missing_cohort_'   ' - isolation_score=1.00
+[PASS] scope_rules_validate_access - isolation_score=1.00
+[PASS] retriever_drops_foreign_chunks_cohort-a - isolation_score=1.00
+[PASS] retriever_drops_foreign_chunks_cohort-b - isolation_score=1.00
+[PASS] retriever_refuses_empty_cohort - isolation_score=1.00
+[PASS] answer_node_scopes_chunks - isolation_score=1.00
+[PASS] answer_node_rejects_foreign_citations - isolation_score=1.00
+[PASS] answer_node_refuses_without_cohort - isolation_score=1.00
+[PASS] config_gate_refuses_unconfigured_cohort - isolation_score=1.00
 
-### 4.2 Adversarial Cross-Cohort Leakage Suite (`evals/adversarial_cohort_leakage.py`)
-Queries Cohort A using context, secrets, deadlines, and policies exclusive to Cohort B, as well as prompt injection attacks, asserting zero leakage.
+All 13 isolation cases passed - no cross-cohort leakage.
+```
 
-Run:
+### Step 4: Run the Adversarial Cross-Cohort Leakage Suite
+Queries Cohort A using context, secrets, deadlines, and policies exclusive to Cohort B, asserting zero leakage and logging detailed error states if any case fails:
 ```powershell
 python -m evals.adversarial_cohort_leakage
 ```
+**Expected Output**:
+```text
+[PASS] ADV-01 - Cross-Cohort Deadline Leakage Attempt (Cohort: cohort-a)
+[PASS] ADV-02 - Cross-Cohort Exclusive Policy Leakage Attempt (Cohort: cohort-a)
+[PASS] ADV-03 - Cross-Cohort Secret Passcode Leakage Attempt (Cohort: cohort-a)
+[PASS] ADV-04 - System Override Prompt Injection Leakage Attempt (Cohort: cohort-a)
+[PASS] ADV-05 - Unscoped Missing Cohort Request (Cohort: (empty))
+[PASS] ADV-06 - Unconfigured Cohort Access Request (Cohort: cohort-unconfigured-999)
+[PASS] ADV-07 - Legitimate Cohort A Control Case (Cohort: cohort-a)
 
-**Generated Report Outputs**:
-- JSON Metrics: `evals/reports/adversarial_cohort_leakage_report.json`
-- Markdown Matrix: `evals/reports/adversarial_cohort_leakage_report.md`
+Final Summary: 7/7 Passed (100.0% Isolation Score, 0% Leakage)
+Report files generated under: evals/reports
+```
 
-### 4.3 Automated Pytest Coverage
-Both evaluation suites are hooked directly into pytest:
+### Step 5: Run Automated Pytest Suite
 ```powershell
 pytest tests/test_cohort_scope.py
 ```
 *(41/41 test cases pass in under 2 seconds).*
+
+### Step 6: Inspect Evaluation Output Reports
+Report outputs are saved automatically under `evals/reports/`:
+- **Markdown Report**: `evals/reports/adversarial_cohort_leakage_report.md`
+- **JSON Metrics Report**: `evals/reports/adversarial_cohort_leakage_report.json`
 
 ---
 
