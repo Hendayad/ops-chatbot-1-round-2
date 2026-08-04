@@ -260,6 +260,33 @@ def run_adversarial_suite() -> dict[str, Any]:
 
                 case_passed = retrieval_passed and grounded_passed and reason_passed and not leakage_detected
 
+                # Build failure diagnostics if test failed
+                failure_diagnostics: dict[str, Any] | None = None
+                if not case_passed:
+                    failure_reasons: list[str] = []
+                    if not retrieval_passed:
+                        failure_reasons.append(f"Retrieval scoping failed (leaked {len(leaked_chunks)} foreign chunk(s)).")
+                    if not grounded_passed:
+                        failure_reasons.append(f"Grounded state mismatch (expected={test['expected_grounded']}, actual={outcome.grounded}).")
+                    if not reason_passed:
+                        failure_reasons.append(f"Escalation reason mismatch (expected={test['expected_reason']!r}, actual={outcome.escalation_reason!r}).")
+                    if leakage_detected:
+                        failure_reasons.append(f"Cross-cohort keyword leakage detected ({', '.join(leaked_found)}).")
+
+                    failure_diagnostics = {
+                        "retrieval_failure": not retrieval_passed,
+                        "grounding_failure": not grounded_passed,
+                        "reason_failure": not reason_passed,
+                        "keyword_leakage_failure": leakage_detected,
+                        "leaked_chunks": [c.source_id for c in leaked_chunks],
+                        "leaked_keywords": leaked_found,
+                        "expected_grounded": test["expected_grounded"],
+                        "actual_grounded": outcome.grounded,
+                        "expected_reason": test["expected_reason"],
+                        "actual_reason": outcome.escalation_reason,
+                        "error_summary": " | ".join(failure_reasons),
+                    }
+
                 if case_passed:
                     passed_count += 1
 
@@ -277,6 +304,7 @@ def run_adversarial_suite() -> dict[str, Any]:
                     "leaked_keywords": leaked_found,
                     "answer_grounded": outcome.grounded,
                     "escalation_reason": outcome.escalation_reason,
+                    "failure_diagnostics": failure_diagnostics,
                     "answer_snippet": outcome.answer[:120].replace("\n", " ") + "..." if len(outcome.answer) > 120 else outcome.answer.replace("\n", " "),
                 })
     finally:
@@ -351,16 +379,25 @@ def save_reports(report: dict[str, Any]) -> tuple[str, str]:
     ])
 
     for item in report["test_results"]:
+        status_detail = "PASS (Blocked Leakage)" if item["passed"] else "FAIL (Leakage Triggered)"
         md_content.extend([
             f"### [{item['id']}] {item['name']}",
             f"- **Target Cohort Scope**: `{item['target_cohort']}`",
             f"- **Adversarial Query**: *\"{item['query']}\"*",
-            f"- **Result Status**: {'PASS (Blocked Leakage)' if item['passed'] else 'FAIL (Leakage Triggered)'}",
+            f"- **Result Status**: {status_detail}",
             f"- **Retrieved Chunks**: {item['retrieved_count']} (Foreign Leaked: {item['leaked_chunks_count']})",
             f"- **Answer Outcome**: Grounded={item['answer_grounded']}, Escalation Reason=`{item['escalation_reason']}`",
             f"- **Answer Snippet**: `{item['answer_snippet']}`",
-            "",
         ])
+
+        if not item["passed"] and item.get("failure_diagnostics"):
+            diag = item["failure_diagnostics"]
+            md_content.extend([
+                f"- **Failure Error Summary**: `{diag['error_summary']}`",
+                f"- **Expected vs Actual Grounded**: expected={diag['expected_grounded']}, actual={diag['actual_grounded']}",
+                f"- **Expected vs Actual Reason**: expected={diag['expected_reason']!r}, actual={diag['actual_reason']!r}",
+            ])
+        md_content.append("")
 
     with open(md_path, "w", encoding="utf-8") as f:
         f.write("\n".join(md_content))
@@ -381,6 +418,9 @@ def main() -> None:
         print(f"[{status}] {item['id']} - {item['name']} (Cohort: {item['target_cohort']})")
         print(f"        Query: \"{item['query']}\"")
         print(f"        Reason: {item['escalation_reason']} | Leaked Keywords: {item['leaked_keywords']}")
+        if not item["passed"] and item.get("failure_diagnostics"):
+            diag = item["failure_diagnostics"]
+            print(f"        ❌ ERROR DIAGNOSTICS: {diag['error_summary']}")
         print("-" * 70)
 
     print(f"\nFinal Summary: {report['passed_cases']}/{report['total_cases']} Passed ({report['isolation_success_rate']}% Isolation Score, 0% Leakage)")
@@ -388,6 +428,13 @@ def main() -> None:
     print(f"Report files generated under: {reports_dir}")
 
     if report["failed_cases"] > 0:
+        print("\n" + "!" * 70)
+        print("DETAILED FAILURE REPORT:")
+        for item in report["test_results"]:
+            if not item["passed"]:
+                diag = item["failure_diagnostics"] or {}
+                print(f"  * [{item['id']}] {item['name']}: {diag.get('error_summary')}")
+        print("!" * 70)
         raise AssertionError(f"Cross-cohort leakage detected in {report['failed_cases']} adversarial test case(s)!")
 
 
