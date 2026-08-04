@@ -10,6 +10,7 @@ cohort configuration.
 from collections.abc import Iterable
 from functools import lru_cache
 from pathlib import Path
+from pypdf import PdfReader
 
 from app.kb.schema import (
     IngestionStats,
@@ -27,11 +28,31 @@ def get_default_store() -> KBStore:
 
 
 def _read_text_file(path: Path, *, encoding: str) -> str:
-    """Read one local source file with clear path validation errors."""
+    """Read text from an approved text or PDF source."""
     if not path.exists():
         raise FileNotFoundError(f"Knowledge source not found: {path}")
+
     if not path.is_file():
         raise IsADirectoryError(f"Knowledge source is not a file: {path}")
+
+    if path.suffix.lower() == ".pdf":
+        reader = PdfReader(str(path))
+
+        pages = [
+            page.extract_text().strip()
+            for page in reader.pages
+            if page.extract_text()
+        ]
+
+        content = "\n\n".join(pages).strip()
+
+        if not content:
+            raise ValueError(
+                f"No extractable text was found in PDF: {path}"
+            )
+
+        return content
+
     return path.read_text(encoding=encoding)
 
 
