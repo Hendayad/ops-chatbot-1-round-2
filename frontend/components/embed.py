@@ -16,8 +16,8 @@ API_BASE = os.getenv("BACKEND_URL", "http://127.0.0.1:8000/api/v1").removesuffix
 
 def render_asset(filename: str, height: int, scrolling: bool = True):
     """Load an HTML file from /assets, inject the current session token and
-    API base in place of the file's own login form, and embed it as-is."""
-
+    API base in place of the file's own login form, and embed it as-is.
+    """
     html = (ASSETS_DIR / filename).read_text(encoding="utf-8")
 
     token = st.session_state.get("token", "") or ""

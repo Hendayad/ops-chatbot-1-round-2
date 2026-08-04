@@ -12,7 +12,6 @@ from app.core.logging import logger
 from app.dashboards.metrics import get_support_metrics
 from app.models.user import User
 from app.services.database import database_service
-from app.tickets.service import list_tickets as list_open_tickets
 
 router = APIRouter()
 db_service = database_service  # shared singleton -- do not construct a new pool here
