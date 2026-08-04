@@ -19,7 +19,7 @@ from datetime import datetime, timedelta, timezone
 
 
 from app.reminders.job import dispatch_due_reminders, get_deliver_fn
-from app.services.database import DatabaseService
+from app.services.database import database_service
 
 
 from app.core.config import settings
@@ -27,7 +27,7 @@ from app.core.config import settings
 
 def run() -> None:
     """Execute one reminder scheduling cycle."""
-    db = DatabaseService()
+    db = database_service  # shared singleton -- do not construct a new pool here
 
     with db.get_session_maker() as session:
         lead_hours = settings.REMINDER_LEAD_TIME_HOURS
