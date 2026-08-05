@@ -8,6 +8,7 @@ from app.core.config import settings
 from app.schemas.notification import Notification
 from app.services.database import database_service
 
+
 db_service = database_service  # shared singleton -- do not construct a new pool here
 
 

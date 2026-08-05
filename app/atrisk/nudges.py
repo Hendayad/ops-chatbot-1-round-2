@@ -97,6 +97,7 @@ def _last_sent_at(learner_id: str) -> Optional[datetime]:
     created_at closely tracks the actual send time without needing a
     dedicated column/migration.
     """
+   
     db_service = database_service  # shared singleton -- do not construct a new pool here
     with db_service.get_session_maker() as session:
         record = session.exec(

@@ -137,7 +137,46 @@ async def list_materials(
         )
 
 
-@router.post("/retire/{material_id}")
+@router.get("/materials/{material_id:path}")
+@limiter.limit(settings.RATE_LIMIT_ENDPOINTS["kb_admin"][0])
+async def get_material(
+    request: Request,
+    material_id: str,
+    user: User = Depends(get_current_user),
+):
+    """Fetch a single material's full content."""
+    try:
+        store = build_default_store()
+        material = store.get_material(material_id)
+
+        if not material:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No material found for material_id={material_id}",
+            )
+
+        logger.info(
+            "kb_material_fetched",
+            user_id=user.id,
+            material_id=material_id,
+        )
+
+        return material
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        logger.exception(
+            "kb_material_fetch_failed",
+            user_id=user.id,
+            material_id=material_id,
+            error=str(e),
+        )
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/retire/{material_id:path}")
 @limiter.limit(settings.RATE_LIMIT_ENDPOINTS["kb_admin"][0])
 async def retire_material(
     request: Request,
@@ -147,7 +186,6 @@ async def retire_material(
     """Retire a material from the knowledge base."""
     try:
         store = build_default_store()
-
         retired = store.retire_material(material_id)
 
         if not retired:
@@ -162,10 +200,7 @@ async def retire_material(
             material_id=material_id,
         )
 
-        return {
-            "material_id": material_id,
-            "retired": True,
-        }
+        return {"material_id": material_id, "retired": True}
 
     except HTTPException:
         raise
@@ -177,8 +212,4 @@ async def retire_material(
             material_id=material_id,
             error=str(e),
         )
-
-        raise HTTPException(
-            status_code=500,
-            detail=str(e),
-        )
+        raise HTTPException(status_code=500, detail=str(e))

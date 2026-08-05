@@ -1,5 +1,5 @@
 
-# Adminr Guide
+# Admin Guide
 ## 1. Introduction
 
 Welcome to the Ops Chatbot Administration Portal.
