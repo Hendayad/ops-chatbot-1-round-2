@@ -1,4 +1,5 @@
-streamlit
+streamlit==1.55.0
 requests
 plotly
-pandas
+pandas>=2.0.0,<3
+streamlit-aggrid>=1.2.1.post2

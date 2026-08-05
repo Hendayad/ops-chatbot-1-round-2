@@ -350,39 +350,12 @@ def load_css():
         ===================================================== */
 
 
-        /* Hide radio input */      
-        section[data-testid="stSidebar"] input[type="radio"] {
-            display: none !important;
-        }
-
-
-        /* Remove the radio circle container */
-        section[data-testid="stSidebar"] div[role="radiogroup"] label > div:first-child {
-            display: none !important;
-        }
-
-
-        /* Remove BaseWeb radio indicator */
-        section[data-testid="stSidebar"] div[role="radiogroup"] [data-baseweb="radio"] {
-            display: none !important;
-        }
-
-
-        /* Remove SVG circles/icons */
-        section[data-testid="stSidebar"] div[role="radiogroup"] svg {
-            display: none !important;
-        }
-
-
-        /* Remove generated dots */
-        section[data-testid="stSidebar"] div[role="radiogroup"] label::before,
-        section[data-testid="stSidebar"] div[role="radiogroup"] label::after {
-
-            content: "" !important;
-
-            display: none !important;
-
-        }
+        /* TEMP: dot-hiding rules removed entirely (2026-08-05) after they
+        turned out to hide the ENTIRE nav item -- not just the radio dot --
+        on streamlit 1.55.0's BaseWeb DOM structure. Nav items will show
+        their default radio circle for now; that's an acceptable tradeoff
+        for a working sidebar today. Revisit with more careful, narrower
+        selectors once there's time to test against the real DOM. */
 
 
         /* Radio group layout */
@@ -457,35 +430,6 @@ def load_css():
             bottom:20px;
 
         }
-        /* =====================================================
-        PIN USER CARD TO BOTTOM OF SIDEBAR
-        ===================================================== */
-
-        section[data-testid="stSidebar"] > div:first-child {
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-        }
-
-        section[data-testid="stSidebar"] > div:first-child > div {
-            display: flex;
-            flex-direction: column;
-            height: 100%;
-        }
-
-        /* The first vertical block (title, menu...) grows */
-        section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] {
-            display: flex;
-            flex-direction: column;
-            height: 100%;
-        }
-
-        /* Push the last block (user card + logout) down */
-        section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] > div:last-child {
-            margin-top: auto !important;
-        }
-
-
         </style>
         """,
 

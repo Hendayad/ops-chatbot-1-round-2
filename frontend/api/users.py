@@ -49,7 +49,7 @@ from api.config import BASE_URL
 def get_users(token):
 
     response = requests.get(
-        f"{BASE_URL}/users",
+        f"{BASE_URL}/users/",
         headers={
             "Authorization": f"Bearer {token}"
         }

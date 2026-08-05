@@ -7,22 +7,6 @@ def show_sidebar(role, notification_count=0, overdue_ticket_count=0):
 
     role = (role or "").lower()
 
-    st.sidebar.markdown(
-        """
-        <style>
-        section[data-testid="stSidebar"] > div {
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-        }
-
-        .sidebar-spacer {
-            flex: 1;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
 
 
     # -----------------------------
