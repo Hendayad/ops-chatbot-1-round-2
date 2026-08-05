@@ -1,0 +1,26 @@
+{
+  "cohort-a": {
+    "name": "Cohort A",
+    "materials_root": "materials/cohort-a",
+    "enabled": true,
+    "materials": [
+      {
+        "title": "Cohort A Schedule",
+        "source": "schedule.md",
+        "type": "schedule"
+      }
+    ]
+  },
+  "cohort-b": {
+    "name": "Cohort B",
+    "materials_root": "materials/cohort-b",
+    "enabled": true,
+    "materials": [
+      {
+        "title": "Cohort B Schedule",
+        "source": "schedule.md",
+        "type": "schedule"
+      }
+    ]
+  }
+}
