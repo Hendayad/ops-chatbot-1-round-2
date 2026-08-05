@@ -37,7 +37,7 @@ def update_preferences(token, preferences):
 def get_notifications(token):
 
     response = requests.get(
-        f"{BASE_URL}/notifications",
+        f"{BASE_URL}/notifications/",
         headers={
             "Authorization": f"Bearer {token}"
         },

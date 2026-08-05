@@ -29,7 +29,7 @@ def show_users():
     try:
         with st.spinner("Loading users..."):
             response = requests.get(
-                f"{BASE_URL}/users",
+                f"{BASE_URL}/users/",
                 headers={
                     "Authorization": f"Bearer {st.session_state.token}"
                 },
