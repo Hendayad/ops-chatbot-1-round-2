@@ -268,7 +268,7 @@ class KBStore:
         return retired
 
 
-class OpenAIEmbedder:
+class GeminiEmbedder:
     """Default :class:`Embedder` backed by OpenAI embeddings via LangChain.
 
     The heavy ``langchain_openai`` import is deferred to construction so this
@@ -296,7 +296,7 @@ class OpenAIEmbedder:
 
         # Temporary backward-compatible fallback.
         if not api_key_value:
-            configured_key = settings.OPENAI_API_KEY
+            configured_key = settings.GOOGLE_API_KEY
 
             if isinstance(configured_key, SecretStr):
                 api_key_value = configured_key.get_secret_value()
@@ -492,5 +492,5 @@ def build_default_store() -> KBStore:
     from app.services.database import database_service
 
     repository = PgVectorChunkRepository(database_service.engine)
-    embedder = OpenAIEmbedder()
+    embedder = GeminiEmbedder()
     return KBStore(repository=repository, embedder=embedder)
