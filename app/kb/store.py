@@ -13,20 +13,19 @@ Postgres table, but :class:`KBStore` depends only on the protocols, so tests
 inject in-memory fakes. See ``tests/test_ingestion.py``.
 """
 
-import math
-import os
 from typing import (
-    Any,
     Protocol,
+    cast,
     runtime_checkable,
 )
 
 from sqlalchemy import (
+    CursorResult,
     Engine,
     text,
 )
 from sqlmodel import Session
-
+import os
 from app.core.config import settings
 from app.core.logging import logger
 from app.kb.schema import (
@@ -36,15 +35,8 @@ from app.kb.schema import (
     normalize_content,
 )
 
-# Dimensionality must match the configured embedding model and the pgvector
-# column. The default is text-embedding-3-small; alternative providers can
-# set KB_EMBEDDING_DIM without changing application code.
-_embedding_dim_value = os.getenv("KB_EMBEDDING_DIM", "1536")
-DEFAULT_EMBEDDING_DIM = (
-    int(_embedding_dim_value)
-    if _embedding_dim_value.isdigit() and int(_embedding_dim_value) > 0
-    else 1536
-)
+# Dimensionality of ``text-embedding-3-small`` (the project's default embedder).
+DEFAULT_EMBEDDING_DIM = 1536
 
 # Physical table backing the knowledge base. Owned entirely by this lane; it is
 # created idempotently by :class:`PgVectorChunkRepository` so no shared Alembic
@@ -102,12 +94,24 @@ class ChunkRepository(Protocol):
         """
         ...
 
-    def list_sources(self) -> list[dict[str, Any]]:
-        """Return one summary row per stored source."""
+    def list_sources(self) -> list[dict]:
+        """List all distinct sources currently stored, with freshness info.
+
+        Returns:
+            One dict per source (not per chunk), including at least
+            ``source_id``, ``content_hash``, and a freshness timestamp.
+        """
         ...
 
     def retire_source(self, source_id: str) -> bool:
-        """Remove all chunks for a source and report whether it existed."""
+        """Delete all chunks belonging to a source.
+
+        Args:
+            source_id: Stable identity of the material to retire.
+
+        Returns:
+            True if the source existed and was deleted, False otherwise.
+        """
         ...
 
 
@@ -135,10 +139,6 @@ def chunk_document(
     Raises:
         ValueError: If ``overlap`` is not smaller than ``max_chars``.
     """
-    if max_chars < 1:
-        raise ValueError("max_chars must be at least 1")
-    if overlap < 0:
-        raise ValueError("overlap must be at least 0")
     if overlap >= max_chars:
         raise ValueError("overlap must be smaller than max_chars")
 
@@ -250,7 +250,7 @@ class KBStore:
         )
         return stats
 
-    def list_materials(self) -> list[dict[str, Any]]:
+    def list_materials(self) -> list[dict]:
         """List all materials currently in the knowledge base, with freshness info."""
         return self._repository.list_sources()
 
@@ -339,11 +339,7 @@ class GeminiEmbedder:
 
 
 def _to_vector_literal(embedding: list[float]) -> str:
-    """Render a validated embedding as a pgvector text literal."""
-    if not embedding:
-        raise ValueError("embedding must not be empty")
-    if not all(math.isfinite(value) for value in embedding):
-        raise ValueError("embedding values must be finite")
+    """Render an embedding as a ``pgvector`` text literal (``[1,2,3]``)."""
     return "[" + ",".join(repr(value) for value in embedding) + "]"
 
 
@@ -388,8 +384,6 @@ class PgVectorChunkRepository:
             """,
             f"CREATE INDEX IF NOT EXISTS ix_{_TABLE_NAME}_source_id ON {_TABLE_NAME} (source_id);",
             f"CREATE INDEX IF NOT EXISTS ix_{_TABLE_NAME}_cohort ON {_TABLE_NAME} (cohort);",
-            f"CREATE UNIQUE INDEX IF NOT EXISTS ux_{_TABLE_NAME}_source_chunk "
-            f"ON {_TABLE_NAME} (source_id, chunk_index);",
         ]
         with Session(self._engine) as session:
             for statement in ddl:
@@ -414,12 +408,6 @@ class PgVectorChunkRepository:
         """Delete existing chunks for a source and insert the new ones atomically."""
         if len(chunks) != len(embeddings):
             raise ValueError("chunks and embeddings must be the same length")
-        if any(chunk.source_id != source_id for chunk in chunks):
-            raise ValueError("all chunks must belong to source_id")
-        if any(len(embedding) != self._embedding_dim for embedding in embeddings):
-            raise ValueError(
-                f"every embedding must contain {self._embedding_dim} values"
-            )
 
         insert_sql = text(
             f"""
@@ -452,31 +440,44 @@ class PgVectorChunkRepository:
                 )
             session.commit()
 
-    def list_sources(self) -> list[dict[str, Any]]:
-        """Return one summary row per stored source."""
-        statement = text(
-            f"""
-            SELECT
-                source_id, cohort, title, source, type, content_hash,
-                COUNT(*) AS chunk_count, MAX(created_at) AS updated_at
-            FROM {_TABLE_NAME}
-            GROUP BY source_id, cohort, title, source, type, content_hash
-            ORDER BY cohort, title
-            """
-        )
+    def list_sources(self) -> list[dict]:
+        """Return one row per distinct source, with its freshness info."""
         with Session(self._engine) as session:
-            rows = session.execute(statement).mappings().all()
-        return [dict(row) for row in rows]
+            rows = session.execute(
+                text(
+                    f"""
+                    SELECT source_id,
+                           MAX(content_hash) AS content_hash,
+                           MAX(created_at) AS last_ingested_at,
+                           COUNT(*) AS chunk_count
+                    FROM {_TABLE_NAME}
+                    GROUP BY source_id
+                    ORDER BY source_id
+                    """
+                )
+            ).all()
+        return [
+            {
+                "source_id": row.source_id,
+                "content_hash": row.content_hash,
+                "last_ingested_at": row.last_ingested_at,
+                "chunk_count": row.chunk_count,
+            }
+            for row in rows
+        ]
 
     def retire_source(self, source_id: str) -> bool:
-        """Delete all chunks for a source and return whether rows were removed."""
+        """Delete all chunks for a source; return whether anything was deleted."""
         with Session(self._engine) as session:
-            result = session.execute(
-                text(f"DELETE FROM {_TABLE_NAME} WHERE source_id = :sid"),
-                {"sid": source_id},
+            result = cast(
+                CursorResult,
+                session.execute(
+                    text(f"DELETE FROM {_TABLE_NAME} WHERE source_id = :sid"),
+                    {"sid": source_id},
+                ),
             )
             session.commit()
-        return bool(result.rowcount)
+        return (result.rowcount or 0) > 0
 
 
 def build_default_store() -> KBStore:

@@ -13,19 +13,25 @@ import pytest
 from prometheus_client import REGISTRY
 
 from app.dashboards.aggregate import aggregate_open_issues, build_alerts
+from app.risk.signals import AtRiskSignal
+
 from app.dashboards.metrics import get_at_risk_snapshot, risk_level_for
 from app.metrics.kpis import (
     ACTIVE_ALERTS,
     ALERT_TYPES,
     AT_RISK_ISSUES,
     CONNECTOR_SYNC_FAILURES,
+    DEFAULT_COHORT_LABEL,
     DEFLECTION_RATE,
     FIRST_RESPONSE_TIME,
+    RESOLUTION_TIME,
+    track_resolution_time,
     update_alert_metrics,
     update_at_risk_metrics,
 )
 from app.risk.signals import RiskIndicator
 from app.schemas.progress import LearnerProgress
+
 
 DASHBOARD_PATH = pathlib.Path(__file__).resolve().parents[1] / "dashboards" / "grafana.json"
 
@@ -143,22 +149,76 @@ def test_at_risk_snapshot_separates_cohorts():
 
     assert snapshot["by_cohort"] == {"cohort-a": {"low": 1}, "cohort-b": {"low": 1}}
 
-
 @pytest.mark.parametrize(
     "indicator_count, expected_level",
     [(1, "low"), (2, "medium"), (3, "high"), (4, "high")],
 )
-def test_risk_level_grades_by_indicator_count(indicator_count, expected_level):
-    class _Signal:
-        triggered_indicators = list(RiskIndicator)[:indicator_count]
+def test_risk_level_grades_by_indicator_count(
+    indicator_count: int,
+    expected_level: str,
+) -> None:
+    signal = AtRiskSignal(
+        learner_id="learner-1",
+        cohort_id="cohort-1",
+        triggered_indicators=list(RiskIndicator)[:indicator_count],
+        is_at_risk=indicator_count > 0,
+    )
 
-    assert risk_level_for(_Signal()) == expected_level
-
+    assert risk_level_for(signal) == expected_level
 
 def test_update_at_risk_metrics_publishes_per_cohort_gauge():
     update_at_risk_metrics({"by_cohort": {"cohort-a": {"high": 3}}})
 
     assert AT_RISK_ISSUES.labels(cohort="cohort-a", risk_level="high")._value.get() == 3
+
+
+# --- Resolution time histogram (F3.3 / NFR-6) ---
+
+
+def _resolution_bucket_counts(cohort):
+    """Return {bucket_upper_bound: cumulative_count} for the resolution-time histogram, for one cohort.
+
+    Reads via REGISTRY.collect() (the public introspection API) rather than
+    guessing the exposition-format string for each "le" label, so this stays
+    correct regardless of how prometheus_client formats bucket boundaries.
+    """
+    counts = {}
+    for family in REGISTRY.collect():
+        if family.name != "ops_resolution_time_seconds":
+            continue
+        for sample in family.samples:
+            if sample.name == "ops_resolution_time_seconds_bucket" and sample.labels.get("cohort") == cohort:
+                counts[float(sample.labels["le"])] = sample.value
+    return counts
+
+
+def test_track_resolution_time_observes_into_the_histogram():
+    """A resolution-time observation should increase the histogram's sum by that amount.
+
+    Mirrors the FIRST_RESPONSE_TIME sum-based check below -- confirms the
+    histogram is actually written to, not just defined (see module docstring).
+    """
+    before = RESOLUTION_TIME.labels(cohort=DEFAULT_COHORT_LABEL)._sum.get()
+
+    track_resolution_time(DEFAULT_COHORT_LABEL, 450.0)
+
+    assert RESOLUTION_TIME.labels(cohort=DEFAULT_COHORT_LABEL)._sum.get() == before + 450.0
+
+
+def test_track_resolution_time_places_the_observation_in_the_correct_bucket():
+    """A 450s ticket should count toward the 600s-and-up buckets but not the 300s-and-under bucket.
+
+    Histogram buckets are cumulative ("le" = less-than-or-equal), so a 450s
+    observation increments every bucket boundary >= 450 and none below it.
+    """
+    before = _resolution_bucket_counts(DEFAULT_COHORT_LABEL)
+
+    track_resolution_time(DEFAULT_COHORT_LABEL, 450.0)
+
+    after = _resolution_bucket_counts(DEFAULT_COHORT_LABEL)
+
+    assert after[600.0] == before.get(600.0, 0.0) + 1
+    assert after[300.0] == before.get(300.0, 0.0)
 
 
 # --- Instrumentation: every metric has a runtime writer ---
@@ -236,8 +296,9 @@ async def _refusal_outcome():
 def test_failed_ops_notification_records_a_connector_failure():
     """Storing a ticket but failing to tell Ops is a connector sync failure."""
     import asyncio
-    from types import SimpleNamespace
+    from datetime import datetime, timezone
 
+    from app.models.escalation_ticket import EscalationTicket
     from app.tickets.service import TicketService
 
     class BrokenNotifier:
@@ -245,24 +306,40 @@ def test_failed_ops_notification_records_a_connector_failure():
             raise RuntimeError("channel unreachable")
 
     service = TicketService(notifier=BrokenNotifier())
-    # _notify_ops only reads these six fields, so a plain stand-in keeps this
-    # test on the metric instead of on SQLModel mapper configuration.
-    ticket = SimpleNamespace(
-        id="esc_test",
-        source="answering",
-        status="open",
-        problem="p",
-        summary="s",
-        suggested_next_step="s",
-    )
 
-    before = CONNECTOR_SYNC_FAILURES.labels(connector_name="BrokenNotifier")._value.get()
+    ticket = EscalationTicket(
+    id="esc_test",
+    source="answering",
+    reason="knowledge_gap",  # <-- add this
+    status="open",
+    problem="p",
+    what_was_tried="w",
+    context="c",
+    suggested_next_step="s",
+    summary="summary",
+    user_goal="goal",
+    key_facts=[],
+    assistant_actions=[],
+    open_questions=[],
+    privacy_note="No transcript stored.",
+    session_id=None,
+    user_id=None,
+    created_at=datetime.now(timezone.utc),
+)
+
+    before = CONNECTOR_SYNC_FAILURES.labels(
+        connector_name="BrokenNotifier"
+    )._value.get()
+
     delivered = asyncio.run(service._notify_ops(ticket))
 
     assert delivered is False
-    assert CONNECTOR_SYNC_FAILURES.labels(connector_name="BrokenNotifier")._value.get() == before + 1
-
-
+    assert (
+        CONNECTOR_SYNC_FAILURES.labels(
+            connector_name="BrokenNotifier"
+        )._value.get()
+        == before + 1
+    )
 # --- The dashboard may only query metrics this application defines ---
 
 

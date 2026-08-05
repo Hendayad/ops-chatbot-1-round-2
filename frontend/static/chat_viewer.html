@@ -385,6 +385,55 @@
     .error-state {
       color: var(--status-critical);
     }
+
+    .session-list-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 6px 8px 10px;
+    }
+
+    .session-list-head h2 {
+      padding: 0;
+    }
+
+    .btn-new-session {
+      font-size: 12px;
+      padding: 5px 10px;
+    }
+
+    .composer {
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+      padding: 12px 16px;
+      border-top: 1px solid var(--gridline);
+    }
+
+    .composer textarea {
+      flex: 1;
+      resize: none;
+      min-height: 40px;
+      max-height: 140px;
+      font: inherit;
+      font-size: 13.5px;
+      padding: 9px 11px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--page-plane);
+      color: var(--text-primary);
+    }
+
+    .composer textarea:disabled {
+      opacity: 0.6;
+    }
+
+    .composer-error {
+      padding: 0 16px 10px;
+      font-size: 12px;
+      color: var(--status-critical);
+    }
   </style>
 </head>
 
@@ -407,7 +456,10 @@
 
     <div class="layout">
       <div class="panel session-list">
-        <h2>Sessions</h2>
+        <div class="session-list-head">
+          <h2>Sessions</h2>
+          <button class="secondary btn-new-session" id="new-session-btn">+ New chat</button>
+        </div>
         <div id="session-list-body">
           <div class="empty-state">Sign in to see this account's chat sessions.</div>
         </div>
@@ -420,6 +472,11 @@
         </div>
         <div class="transcript-body" id="transcript-body">
           <div class="empty-state">Pick a session on the left once you're signed in.</div>
+        </div>
+        <div class="composer-error" id="composer-error" style="display:none;"></div>
+        <div class="composer">
+          <textarea id="composer-input" rows="1" placeholder="Type a message..." disabled></textarea>
+          <button id="composer-send" disabled>Send</button>
         </div>
       </div>
     </div>
@@ -448,7 +505,11 @@
         sessionListBody: document.getElementById("session-list-body"),
         transcriptTitle: document.getElementById("transcript-title"),
         transcriptBody: document.getElementById("transcript-body"),
-        refreshBtn: document.getElementById("refresh-btn")
+        refreshBtn: document.getElementById("refresh-btn"),
+        newSessionBtn: document.getElementById("new-session-btn"),
+        composerInput: document.getElementById("composer-input"),
+        composerSend: document.getElementById("composer-send"),
+        composerError: document.getElementById("composer-error")
       };
 
       var state = {
@@ -498,6 +559,44 @@
         if (!resp.ok) {
           if (resp.status === 401) throw { message: "Session token expired — pick the session again." };
           throw { message: "Failed to load messages (HTTP " + resp.status + ")." };
+        }
+        return resp.json();
+      }
+
+      async function createSession(userToken) {
+        var resp = await fetch(apiBase() + "/api/v1/auth/session", {
+          method: "POST",
+          headers: { Authorization: "Bearer " + userToken }
+        });
+        if (!resp.ok) {
+          if (resp.status === 401) throw { message: "Session expired — please sign in again." };
+          throw { message: "Failed to create a new chat (HTTP " + resp.status + ")." };
+        }
+        return resp.json();
+      }
+
+      async function postChatMessage(sessionToken, text) {
+        var resp = await fetch(apiBase() + "/api/v1/chatbot/chat", {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer " + sessionToken,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ messages: [{ role: "user", content: text }] })
+        });
+        if (!resp.ok) {
+          if (resp.status === 401) throw { message: "Session token expired — pick the session again." };
+          if (resp.status === 429) throw { message: "Sending too fast — wait a moment and try again." };
+          var detailText = "HTTP " + resp.status;
+          try {
+            var body = await resp.json();
+            if (body && Array.isArray(body.errors) && body.errors.length) {
+              detailText += ": " + body.errors.map(function (e) { return e.field + " " + e.message; }).join("; ");
+            } else if (body && body.detail) {
+              detailText += ": " + (typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail));
+            }
+          } catch (parseErr) { /* response wasn't JSON -- fall back to status only */ }
+          throw { message: "Failed to send message (" + detailText + ")." };
         }
         return resp.json();
       }
@@ -557,8 +656,66 @@
         state.activeSessionToken = session.token.access_token;
         el.transcriptTitle.textContent = (session.name && session.name.trim()) ? session.name : sessionId;
         el.refreshBtn.disabled = false;
+        el.composerInput.disabled = false;
+        el.composerSend.disabled = false;
+        setComposerError("");
         renderSessionList();
         await loadMessages();
+      }
+
+      function setComposerError(text) {
+        if (text) {
+          el.composerError.textContent = text;
+          el.composerError.style.display = "block";
+        } else {
+          el.composerError.textContent = "";
+          el.composerError.style.display = "none";
+        }
+      }
+
+      async function newChat() {
+        el.newSessionBtn.disabled = true;
+        setComposerError("");
+        try {
+          var session = await createSession(state.userToken);
+          state.sessions.unshift(session);
+          await selectSession(session.session_id);
+          renderMessages([]);
+        } catch (err) {
+          setComposerError(err.message || "Failed to start a new chat.");
+        } finally {
+          el.newSessionBtn.disabled = false;
+        }
+      }
+
+      async function sendComposerMessage() {
+        var text = el.composerInput.value.trim();
+        if (!text || !state.activeSessionToken) return;
+
+        el.composerInput.disabled = true;
+        el.composerSend.disabled = true;
+        setComposerError("");
+
+        // Optimistically show the outgoing message so the UI feels responsive
+        // while the assistant's reply is in flight.
+        var pending = document.createElement("div");
+        pending.className = "bubble-row assistant";
+        pending.innerHTML = '<div><div class="bubble">Thinking…</div></div>';
+        el.transcriptBody.appendChild(pending);
+        el.transcriptBody.scrollTop = el.transcriptBody.scrollHeight;
+
+        try {
+          var data = await postChatMessage(state.activeSessionToken, text);
+          el.composerInput.value = "";
+          renderMessages(data.messages || []);
+        } catch (err) {
+          pending.remove();
+          setComposerError(err.message || "Failed to send message.");
+        } finally {
+          el.composerInput.disabled = false;
+          el.composerSend.disabled = false;
+          el.composerInput.focus();
+        }
       }
 
       async function loadMessages() {
@@ -588,6 +745,14 @@
       }
 
       el.refreshBtn.addEventListener("click", loadMessages);
+      el.newSessionBtn.addEventListener("click", newChat);
+      el.composerSend.addEventListener("click", sendComposerMessage);
+      el.composerInput.addEventListener("keydown", function (evt) {
+        if (evt.key === "Enter" && !evt.shiftKey) {
+          evt.preventDefault();
+          sendComposerMessage();
+        }
+      });
 
       (function init() {
         if (state.userToken) {

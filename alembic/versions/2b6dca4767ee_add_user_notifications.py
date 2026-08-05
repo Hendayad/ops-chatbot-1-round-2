@@ -1,4 +1,4 @@
-"""add user notifications
+"""add user notifications.
 
 Revision ID: 11fb67315889
 Revises: af85594bc62b
@@ -20,7 +20,6 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-
     op.create_table(
         "user_notification",
 
@@ -80,7 +79,6 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Downgrade schema."""
-
     op.drop_index(
         "ix_user_notification_user_id",
         table_name="user_notification",

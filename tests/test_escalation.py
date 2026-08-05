@@ -597,7 +597,7 @@ def test_week3_api_exposes_authenticated_rate_limited_ticket_routes():
 
     for route in required_routes:
         dependency_calls = {dependency.call for dependency in route.dependant.dependencies}
-        assert v1_tickets_api.get_current_user in dependency_calls
+        assert v1_tickets_api.get_current_ops_user in dependency_calls
 
     for endpoint_name in (
         "app.api.v1.tickets.list_ops_tickets",

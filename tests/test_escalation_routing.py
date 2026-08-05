@@ -1,17 +1,26 @@
 """Deterministic tests for Phase 1 escalation routing."""
 
 import asyncio
+from typing import cast
 
 from langchain_core.messages import AIMessage
+from langchain_core.runnables import RunnableConfig
 
 try:
     from langgraph.checkpoint.memory import InMemorySaver
 except ImportError:
     from langgraph.checkpoint.memory import MemorySaver as InMemorySaver
 
-from app.graph.graph import answer_node, build_phase1_graph, escalate_node
+from app.graph.graph import (
+    answer_node,
+    build_phase1_graph,
+    escalate_node,
+)
 from app.graph.nodes.router import route_turn, router_node
-from app.graph.state import EscalationContext, SessionGraphState
+from app.graph.state import (
+    EscalationContext,
+    SessionGraphState,
+)
 
 
 def make_state(message: str) -> SessionGraphState:
@@ -95,7 +104,10 @@ def test_answer_node_projects_escalation_signal(monkeypatch):
             ]
         }
 
-    monkeypatch.setattr("app.graph.graph.grounded_answer", fake_grounded_answer)
+    monkeypatch.setattr(
+        "app.graph.graph.grounded_answer",
+        fake_grounded_answer,
+    )
 
     state = make_state("What is the exact updated deadline?")
     result = asyncio.run(answer_node(state))
@@ -142,16 +154,24 @@ def test_phase1_graph_builds():
 
 def test_router_node_adds_langfuse_tags_to_metadata():
     state = make_state("I want a human to help me.")
-    config = {"metadata": {}}
+
+    config: RunnableConfig = {
+        "metadata": {},
+    }
 
     router_node(state, config=config)
 
-    assert "phase1-routing" in config["metadata"]["langfuse_tags"]
-    assert "route:escalate" in config["metadata"]["langfuse_tags"]
-    assert "trigger:explicit_human_request" in config["metadata"]["langfuse_tags"]
+    metadata = cast(dict, config["metadata"])
+    tags = metadata["langfuse_tags"]
+
+    assert "phase1-routing" in tags
+    assert "route:escalate" in tags
+    assert "trigger:explicit_human_request" in tags
 
 
-def test_phase1_graph_persists_escalation_context_and_ticket_id_across_reload(monkeypatch):
+def test_phase1_graph_persists_escalation_context_and_ticket_id_across_reload(
+    monkeypatch,
+):
     async def fake_grounded_answer(state, config=None, cohort=None):
         return {
             "messages": [
@@ -175,35 +195,62 @@ def test_phase1_graph_persists_escalation_context_and_ticket_id_across_reload(mo
 
         return Result()
 
-    monkeypatch.setattr("app.graph.graph.grounded_answer", fake_grounded_answer)
-    monkeypatch.setattr("app.graph.graph.trigger_answering_escalation", fake_trigger_answering_escalation)
+    monkeypatch.setattr(
+        "app.graph.graph.grounded_answer",
+        fake_grounded_answer,
+    )
+
+    monkeypatch.setattr(
+        "app.graph.graph.trigger_answering_escalation",
+        fake_trigger_answering_escalation,
+    )
 
     async def run_flow():
         saver = InMemorySaver()
         graph = build_phase1_graph(checkpointer=saver)
-        config = {
-            "configurable": {"thread_id": "session_123"},
-            "metadata": {"session_id": "session_123", "user_id": "user_456"},
-        }
 
-        await graph.ainvoke(
-            {
-                "messages": [{"role": "user", "content": "Please I want a humna to help me."}],
+        config: RunnableConfig = {
+            "configurable": {
+                "thread_id": "session_123",
+            },
+            "metadata": {
                 "session_id": "session_123",
                 "user_id": "user_456",
             },
-            config=config,
+        }
+
+        state = cast(
+            SessionGraphState,
+            {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": "Please I want a humna to help me.",
+                    }
+                ],
+                "session_id": "session_123",
+                "user_id": "user_456",
+            },
         )
+
+        await graph.ainvoke(state, config=config)
 
         state_after_first_run = await graph.aget_state(config)
         values = state_after_first_run.values
+
         escalation_context = values["escalation_context"]
+
         assert escalation_context.trigger_reason == "explicit_human_request"
         assert values["ticket_id"] == "esc_reload_123"
 
         reloaded_state = await graph.aget_state(config)
         reloaded_values = reloaded_state.values
-        assert reloaded_values["escalation_context"].model_dump() == escalation_context.model_dump()
+
+        assert (
+            reloaded_values["escalation_context"].model_dump()
+            == escalation_context.model_dump()
+        )
+
         assert reloaded_values["ticket_id"] == "esc_reload_123"
 
     asyncio.run(run_flow())

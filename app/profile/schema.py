@@ -8,7 +8,6 @@ from pydantic import BaseModel, Field, field_validator
 
 class ProfileField(str, Enum):
     """Fields collected one at a time so the learner is never overwhelmed."""
-
     PREFERRED_NAME = "preferred_name"
     TIMEZONE = "timezone"
     COHORT = "cohort"
@@ -17,9 +16,9 @@ class ProfileField(str, Enum):
 class LearnerProfile(BaseModel):
     """Privacy-minimal profile persisted for a learner."""
 
-    preferred_name: str | None = Field(default=None, max_length=80)
-    timezone: str | None = Field(default=None, max_length=64)
-    cohort: str | None = Field(default=None, max_length=80)
+    preferred_name: str | None = Field(default=None, )
+    timezone: str | None = Field(default=None,)
+    cohort: str | None = Field(default=None,)
 
     @field_validator("preferred_name", "cohort")
     @classmethod

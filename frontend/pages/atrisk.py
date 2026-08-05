@@ -50,7 +50,6 @@ def _chart_layout(fig):
 
 def render_atrisk_tab():
     """Renders the At-Risk Nudges dashboard content. Call from inside a tab."""
-
     st.caption("At-risk learners, why they're flagged, and how the count is trending.")
 
     filt1, filt2, filt3 = st.columns([2, 1.3, 1.3])

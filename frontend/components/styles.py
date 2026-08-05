@@ -17,8 +17,9 @@ BADGE_STYLES = {
 }
 
 ROLE_BADGE = {
-    "learner":      "info",
-    "admin":        "neutral",
+    "learner": "info",
+    "program_lead": "success",
+    "admin": "neutral",
 }
 
 
@@ -455,6 +456,33 @@ def load_css():
 
             bottom:20px;
 
+        }
+        /* =====================================================
+        PIN USER CARD TO BOTTOM OF SIDEBAR
+        ===================================================== */
+
+        section[data-testid="stSidebar"] > div:first-child {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        section[data-testid="stSidebar"] > div:first-child > div {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        /* The first vertical block (title, menu...) grows */
+        section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        /* Push the last block (user card + logout) down */
+        section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] > div:last-child {
+            margin-top: auto !important;
         }
 
 

@@ -8,22 +8,32 @@ PAGE_ICONS = {
     "Settings": "⚙️",
     "Guide": "📘",
     "Users": "👥",
+    "Cohorts": "📂"
 }
 
 # Learner tabs vs. Admin-exclusive tabs
 ROLE_PAGES = {
+
     "learner": [
         "Chat Viewer",
         "Reminders",
         "Settings",
     ],
+
+    "program_lead": [
+        "Dashboard",
+        "Knowledge Base",
+        "Cohorts",
+        "Users",
+        "Settings",
+    ],
+
     "admin": [
         "Dashboard",
         "Escalations",
         "Analytics",
-        "Knowledge Base",
-        "Users",
         "Guide",
         "Settings",
     ],
+
 }
