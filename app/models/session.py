@@ -27,6 +27,7 @@ class Session(BaseModel, table=True):
         created_at: When the session was created
         messages: Relationship to session messages
         user: Relationship to the session owner
+        cohort_id: Cohort associated with the authenticated session
     """
 
     id: str = Field(primary_key=True)
@@ -34,3 +35,8 @@ class Session(BaseModel, table=True):
     name: str = Field(default="")
     username: Optional[str] = Field(default=None)
     user: "User" = Relationship(back_populates="sessions")
+    cohort_id: str | None = Field(
+            default=None,
+            max_length=100,
+            index=True,
+        )

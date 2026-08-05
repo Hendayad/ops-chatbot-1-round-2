@@ -392,6 +392,7 @@ async def grounded_answer(
         content=outcome.answer,
         additional_kwargs={
             "grounding": {
+                "cohort_id": resolved_cohort,
                 "grounded": outcome.grounded,
                 "needs_escalation": outcome.needs_escalation,
                 "escalation_reason": outcome.escalation_reason,
@@ -399,7 +400,13 @@ async def grounded_answer(
             }
         },
     )
-    return {"messages": [message]}
+    return {
+        "messages": [message],
+        "cohort_id": resolved_cohort,
+        "answer_generated": True,
+        "answer_escalation_signal": outcome.needs_escalation,
+        "answer_escalation_reason": outcome.escalation_reason,
+    }
 
 
 # Friendly alias for graph builders or tests that name nodes after their file.

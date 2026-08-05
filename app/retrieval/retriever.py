@@ -100,32 +100,56 @@ class ChunkSearchRepository(Protocol):
         ...
 
 
-class OpenAIQueryEmbedder:
-    """Query embedder matching the ingestion lane's OpenAI embedding setup."""
+class GeminiQueryEmbedder:
+    """Query embedder matching the ingestion lane's Gemini configuration."""
 
-    def __init__(self, model: str | None = None) -> None:
-        """Initialize the LangChain embedding client."""
-        from langchain_openai import OpenAIEmbeddings
+    def __init__(
+        self,
+        model: str | None = None,
+        *,
+        output_dimensionality: int | None = None,
+    ) -> None:
+        """Initialize the Gemini embedding client.
 
-        embedding_model = model or settings.LONG_TERM_MEMORY_EMBEDDER_MODEL
-        api_key = SecretStr(settings.OPENAI_API_KEY)
-        base_url = os.getenv("OPENAI_BASE_URL")
+        The query and stored document chunks must use the same model and vector
+        size. ``KB_EMBEDDING_DIM`` defaults to 1536 to match the knowledge-base
+        pgvector column and the ingestion embedder.
+        """
+        from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
-        if base_url:
-            self._client = OpenAIEmbeddings(
-                model=embedding_model,
-                api_key=api_key,
-                base_url=base_url,
+        embedding_model = (
+            model
+            or settings.LONG_TERM_MEMORY_EMBEDDER_MODEL
+            or "gemini-embedding-001"
+        )
+
+        dimension = output_dimensionality or int(
+            os.getenv("KB_EMBEDDING_DIM", "1536")
+        )
+        if dimension <= 0:
+            raise ValueError("KB_EMBEDDING_DIM must be a positive integer")
+
+        api_key_value = (
+            os.getenv("GOOGLE_API_KEY")
+        )
+        if not api_key_value:
+            raise ValueError(
+                "Gemini embedding API key is missing. "
+                "Set GOOGLE_API_KEY or GEMINI_API_KEY."
             )
-        else:
-            self._client = OpenAIEmbeddings(
-                model=embedding_model,
-                api_key=api_key,
-            )
+
+        self._client = GoogleGenerativeAIEmbeddings(
+            model=embedding_model,
+            api_key=SecretStr(api_key_value),
+            output_dimensionality=dimension,
+        )
 
     def embed_query(self, query: str) -> list[float]:
-        """Generate one embedding vector for a learner query."""
-        return self._client.embed_query(query)
+        """Generate one Gemini embedding vector for a learner query."""
+        vector = self._client.embed_query(query)
+        if not vector:
+            raise ValueError("Gemini returned an empty query embedding")
+        return [float(value) for value in vector]
 
 
 def _to_vector_literal(embedding: list[float]) -> str:
@@ -345,7 +369,7 @@ def build_default_retriever() -> KnowledgeRetriever:
     from app.services.database import database_service
 
     repository = PgVectorChunkSearchRepository(database_service.engine)
-    embedder = OpenAIQueryEmbedder()
+    embedder = GeminiQueryEmbedder()
     return KnowledgeRetriever(repository=repository, embedder=embedder)
 
 

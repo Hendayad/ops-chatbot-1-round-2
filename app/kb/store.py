@@ -25,10 +25,10 @@ from sqlalchemy import (
     text,
 )
 from sqlmodel import Session
-
+import os
 from app.core.config import settings
 from app.core.logging import logger
-from app.schemas.knowledge import (
+from app.kb.schema import (
     IngestionStats,
     KnowledgeChunk,
     RawMaterial,
@@ -268,7 +268,7 @@ class KBStore:
         return retired
 
 
-class OpenAIEmbedder:
+class GeminiEmbedder:
     """Default :class:`Embedder` backed by OpenAI embeddings via LangChain.
 
     The heavy ``langchain_openai`` import is deferred to construction so this
@@ -277,30 +277,65 @@ class OpenAIEmbedder:
     """
 
     def __init__(self, model: str | None = None) -> None:
-        """Initialize the embedder.
-
-        Args:
-            model: Embedding model name; defaults to the project setting
-                ``LONG_TERM_MEMORY_EMBEDDER_MODEL``.
-        """
-        from langchain_openai import OpenAIEmbeddings
+        """Initialize the Gemini embedding client."""
+        from langchain_google_genai import GoogleGenerativeAIEmbeddings
         from pydantic import SecretStr
 
-        self._model = model or settings.LONG_TERM_MEMORY_EMBEDDER_MODEL
-        self._client = OpenAIEmbeddings(model=self._model, api_key=SecretStr(settings.OPENAI_API_KEY))
+        self._model = (
+            model
+            or settings.LONG_TERM_MEMORY_EMBEDDER_MODEL
+            or "gemini-embedding-001"
+        )
+        self._dimension = 1536
+
+        # Use the native Gemini key configuration.
+        api_key_value = (
+            os.getenv("GOOGLE_API_KEY")
+            or os.getenv("GEMINI_API_KEY")
+        )
+
+        # Temporary backward-compatible fallback.
+        if not api_key_value:
+            configured_key = settings.GOOGLE_API_KEY
+
+            if isinstance(configured_key, SecretStr):
+                api_key_value = configured_key.get_secret_value()
+            elif configured_key:
+                api_key_value = str(configured_key)
+
+        if not api_key_value:
+            raise ValueError(
+                "Gemini embedding API key is missing. "
+                "Set GOOGLE_API_KEY in .env.development."
+            )
+
+        self._client = GoogleGenerativeAIEmbeddings(
+            model=self._model,
+            api_key=SecretStr(api_key_value),
+            output_dimensionality=self._dimension,
+        )
 
     def embed(self, texts: list[str]) -> list[list[float]]:
-        """Embed a batch of texts with the configured OpenAI model.
-
-        Args:
-            texts: The chunk texts to embed.
-
-        Returns:
-            One embedding vector per input text, in order.
-        """
+        """Generate and validate document embeddings."""
         if not texts:
             return []
-        return self._client.embed_documents(texts)
+    
+        vectors = self._client.embed_documents(texts)
+    
+        if len(vectors) != len(texts):
+            raise RuntimeError(
+                "The embedding provider returned an unexpected "
+                "number of vectors."
+            )
+    
+        for index, vector in enumerate(vectors):
+            if len(vector) != self._dimension:
+                raise RuntimeError(
+                    f"Embedding {index} has {len(vector)} dimensions; "
+                    f"expected {self._dimension}."
+                )
+    
+        return vectors
 
 
 def _to_vector_literal(embedding: list[float]) -> str:
@@ -458,5 +493,5 @@ def build_default_store() -> KBStore:
     from app.services.database import database_service
 
     repository = PgVectorChunkRepository(database_service.engine)
-    embedder = OpenAIEmbedder()
+    embedder = GeminiEmbedder()
     return KBStore(repository=repository, embedder=embedder)
