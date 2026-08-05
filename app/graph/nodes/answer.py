@@ -410,7 +410,7 @@ async def grounded_answer(
     return {
         "messages": [message],
         "cohort_id": resolved_cohort,
-        "answer_generated": outcome.grounded,
+        "answer_generated": True,
         "answer_escalation_signal": outcome.needs_escalation,
         "answer_escalation_reason": outcome.escalation_reason,
     }
