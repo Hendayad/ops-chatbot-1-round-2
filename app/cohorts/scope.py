@@ -22,7 +22,7 @@ def normalize_cohort(cohort: str | None) -> str:
     """Return a cohort id stripped of surrounding whitespace, or "" if absent."""
     if not cohort:
         return ""
-    return cohort.strip()
+    return cohort.strip().casefold()
 
 
 def is_same_cohort(candidate: str | None, expected: str | None) -> bool:

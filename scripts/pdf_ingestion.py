@@ -7,11 +7,11 @@ from app.kb.schema import SourceType
 def main() -> None:
     """Ingest the test PDF and print the result."""
     stats = ingest_file(
-        "materials/test_faqs.pdf",
-        cohort="General",
-        source_type=SourceType.FAQ,
+        "materials/test_faqs.pdf", # Path
+        cohort="General", # General, Cohort a, Cohort b, ...
+        source_type=SourceType.FAQ, # FAQ, ONBOARDING, SCHEDULE, PROGRAM_DOC
         title="FAQs",
-        source="materials/test_faqs.pdf",
+        source="materials/test_faqs.pdf", # Source of file
     )
 
     print("PDF ingestion completed")

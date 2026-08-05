@@ -39,6 +39,7 @@ class User(BaseModel, table=True):
             implicit from just being logged in.
         created_at: When the user was created
         sessions: Relationship to user's chat sessions
+        cohort_id: Cohort associated with the authenticated session
     """
 
     id: int = Field(default=None, primary_key=True)
@@ -77,6 +78,11 @@ class User(BaseModel, table=True):
             "cascade": "all, delete-orphan",
             "single_parent": True,
         },
+    )
+    cohort_id: str | None = Field(
+        default=None,
+        max_length=100,
+        index=True,
     )
 
     def verify_password(self, password: str) -> bool:

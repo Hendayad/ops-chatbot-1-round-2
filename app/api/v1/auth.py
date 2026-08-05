@@ -300,7 +300,7 @@ async def create_session(user: User = Depends(get_current_user)):
         session_id = str(uuid.uuid4())
 
         # Create session in database, copying username for LLM personalization
-        session = await db_service.create_session(session_id, user.id, username=user.username)
+        session = await db_service.create_session(session_id, user.id, username=user.username, cohort_id=user.cohort_id)
 
         # Create access token for the session
         token = create_access_token(session_id)

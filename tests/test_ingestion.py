@@ -10,6 +10,7 @@ fast and deterministic and runs anywhere ``make check`` runs.
 import gc
 import shutil
 import tempfile
+import json
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,13 @@ from app.ingestion.loader import load_materials
 from app.kb.store import (
     KBStore,
     chunk_document,
+from app.cohorts.config import CohortConfigLoader
+from app.cohorts.scope import scope_by_cohort
+from app.kb.ingest import (
+    ingest_file,
+    ingest_materials,
+    ingest_sources,
+    material_from_file,
 )
 from app.schemas.knowledge import (
     IngestionStats,
@@ -259,3 +267,204 @@ def test_ingestion_stats_default_to_zero() -> None:
     """A fresh stats object starts at zero on every counter."""
     stats = IngestionStats()
     assert (stats.sources_seen, stats.sources_ingested, stats.sources_skipped, stats.chunks_written) == (0, 0, 0, 0)
+def test_empty_batch_returns_zero_stats_without_using_store() -> None:
+    assert ingest_materials([]) == IngestionStats()
+
+
+def test_missing_source_file_raises_clear_error(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError, match="Knowledge source not found"):
+        material_from_file(
+            tmp_path / "missing.md",
+            cohort="cohort-x",
+            source_type=SourceType.FAQ,
+        )
+
+
+def test_store_can_list_and_retire_materials() -> None:
+    store, repository, _ = _make_store()
+    material = _material("A stored FAQ.")
+    ingest_materials([material], store=store)
+
+    listed = store.list_materials()
+    retired = store.retire_material(material.source_id)
+
+    assert listed[0]["source_id"] == material.source_id
+    assert retired is True
+    assert repository.all_chunks() == []
+    assert store.retire_material(material.source_id) is False
+
+def _write_cohort_config(
+    tmp_path: Path,
+    *,
+    include_invalid_entry: bool = False,
+) -> Path:
+    """Create a small two-cohort configuration used by isolation tests."""
+    config: dict[str, Any] = {
+        " COHORT-A ": {
+            "name": "Cohort A",
+            "materials_root": str(tmp_path / "materials" / "cohort-a"),
+        },
+        "cohort-b": {
+            "name": "Cohort B",
+            "materials_root": str(tmp_path / "materials" / "cohort-b"),
+        },
+    }
+    if include_invalid_entry:
+        config["broken-cohort"] = {
+            "name": "",
+            "materials_root": "",
+        }
+
+    config_path = tmp_path / "cohorts_config.json"
+    config_path.write_text(
+        json.dumps(config),
+        encoding="utf-8",
+    )
+    return config_path
+
+
+def test_cohort_config_normalizes_ids_and_loads_material_roots(
+    tmp_path: Path,
+) -> None:
+    """Configured cohort IDs are canonical and expose their material roots."""
+    config_path = _write_cohort_config(tmp_path)
+    loader = CohortConfigLoader(str(config_path))
+
+    assert loader.list_cohorts() == ["cohort-a", "cohort-b"]
+    assert loader.is_known_cohort("  COHORT-A  ") is True
+    assert loader.is_known_cohort("cohort-x") is False
+
+    cohort_a = loader.load_cohort_config("COHORT-A")
+
+    assert cohort_a["cohort_id"] == "cohort-a"
+    assert cohort_a["name"] == "Cohort A"
+    assert Path(cohort_a["materials_root"]) == (
+        tmp_path / "materials" / "cohort-a"
+    )
+    assert cohort_a["enabled"] is True
+    assert cohort_a["materials"] == []
+
+
+def test_invalid_and_unknown_cohort_config_fails_closed(tmp_path: Path) -> None:
+    """Invalid entries are ignored and unknown cohorts return no material root."""
+    config_path = _write_cohort_config(
+        tmp_path,
+        include_invalid_entry=True,
+    )
+    loader = CohortConfigLoader(str(config_path))
+
+    assert "broken-cohort" not in loader.list_cohorts()
+    assert loader.is_known_cohort(None) is False
+    assert loader.is_known_cohort("") is False
+    unknown = loader.load_cohort_config("cohort-x")
+
+    assert unknown["cohort_id"] == "cohort-x"
+    assert unknown["name"] == ""
+    assert unknown["materials_root"] == ""
+    assert unknown["enabled"] is False
+    assert unknown["materials"] == []
+
+
+def test_configured_material_roots_drive_isolated_ingestion(
+    tmp_path: Path,
+) -> None:
+    """Each configured root ingests the same filename under its own cohort."""
+    materials_root = tmp_path / "materials"
+    cohort_a_root = materials_root / "cohort-a"
+    cohort_b_root = materials_root / "cohort-b"
+    cohort_a_root.mkdir(parents=True)
+    cohort_b_root.mkdir(parents=True)
+
+    (cohort_a_root / "schedule.md").write_text(
+        "Cohort A deadline is August 15.",
+        encoding="utf-8",
+    )
+    (cohort_b_root / "schedule.md").write_text(
+        "Cohort B deadline is August 22.",
+        encoding="utf-8",
+    )
+
+    loader = CohortConfigLoader(str(_write_cohort_config(tmp_path)))
+    store, repository, _ = _make_store()
+
+    for cohort_id in loader.list_cohorts():
+        cohort = loader.load_cohort_config(cohort_id)
+        source = SourceMetadata(
+            title=f"{cohort['name']} Schedule",
+            source="schedule.md",
+            type=SourceType.SCHEDULE,
+            cohort=cohort_id,
+        )
+        stats = ingest_sources(
+            [source],
+            base_dir=Path(cohort["materials_root"]),
+            store=store,
+        )
+        assert stats.sources_ingested == 1
+
+    assert set(repository.by_source) == {
+        "cohort-a::schedule.md",
+        "cohort-b::schedule.md",
+    }
+
+    content_by_cohort = {
+        chunk.metadata.cohort: chunk.content
+        for chunk in repository.all_chunks()
+    }
+    assert "August 15" in content_by_cohort["cohort-a"]
+    assert "August 22" in content_by_cohort["cohort-b"]
+
+
+def test_ingested_records_can_be_scoped_without_cross_cohort_leakage() -> None:
+    """The shared scoping hook returns records from only one cohort."""
+    store, repository, _ = _make_store()
+    ingest_materials(
+        [
+            _material(
+                "Cohort A deadline is August 15.",
+                cohort="cohort-a",
+                source="schedule.md",
+                source_type=SourceType.SCHEDULE,
+            ),
+            _material(
+                "Cohort B deadline is August 22.",
+                cohort="cohort-b",
+                source="schedule.md",
+                source_type=SourceType.SCHEDULE,
+            ),
+        ],
+        store=store,
+    )
+
+    records = [
+        {
+            "source_id": chunk.source_id,
+            "cohort": chunk.metadata.cohort,
+            "content": chunk.content,
+        }
+        for chunk in repository.all_chunks()
+    ]
+
+    cohort_a_records = scope_by_cohort(records, "  COHORT-A  ")
+    cohort_b_records = scope_by_cohort(records, "cohort-b")
+
+    assert len(cohort_a_records) == 1
+    assert cohort_a_records[0]["cohort"] == "cohort-a"
+    assert "August 15" in cohort_a_records[0]["content"]
+
+    assert len(cohort_b_records) == 1
+    assert cohort_b_records[0]["cohort"] == "cohort-b"
+    assert "August 22" in cohort_b_records[0]["content"]
+
+
+@pytest.mark.parametrize("missing_cohort", [None, "", "   "])
+def test_scoping_hook_fails_closed_without_cohort(
+    missing_cohort: str | None,
+) -> None:
+    """A missing cohort never exposes unscoped ingestion records."""
+    records = [
+        {"cohort": "cohort-a", "content": "A"},
+        {"cohort": "cohort-b", "content": "B"},
+    ]
+
+    assert scope_by_cohort(records, missing_cohort) == []
