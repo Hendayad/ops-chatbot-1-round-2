@@ -13,6 +13,7 @@ Postgres table, but :class:`KBStore` depends only on the protocols, so tests
 inject in-memory fakes. See ``tests/test_ingestion.py``.
 """
 
+import os
 from typing import (
     Protocol,
     cast,
@@ -77,6 +78,8 @@ class ChunkRepository(Protocol):
             The content hash last stored for the source, or ``None`` when the
             source has never been ingested.
         """
+        ...
+    def get_source(self, source_id: str) -> dict | None:
         ...
 
     def replace_source(
@@ -249,6 +252,8 @@ class KBStore:
             chunks_written=stats.chunks_written,
         )
         return stats
+    def get_material(self, source_id: str) -> dict | None:
+        return self._repository.get_source(source_id)
 
     def list_materials(self) -> list[dict]:
         """List all materials currently in the knowledge base, with freshness info."""
@@ -439,6 +444,29 @@ class PgVectorChunkRepository:
                     },
                 )
             session.commit()
+    def get_source(self, source_id: str) -> dict | None:
+        with Session(self._engine) as session:
+            row = session.execute(
+                text(f"""
+                    SELECT
+                        source_id,
+                        MAX(title) AS title,
+                        MAX(source) AS source,
+                        MAX(type) AS type,
+                        MAX(content_hash) AS content_hash,
+                        MAX(created_at) AS last_ingested_at,
+                        string_agg(content, E'\n\n' ORDER BY chunk_index) AS content
+                    FROM {_TABLE_NAME}
+                    WHERE source_id = :sid
+                    GROUP BY source_id
+                """),
+                {"sid": source_id},
+            ).first()
+
+        if row is None:
+            return None
+
+        return dict(row._mapping)
 
     def list_sources(self) -> list[dict]:
         """Return one row per distinct source, with its freshness info."""

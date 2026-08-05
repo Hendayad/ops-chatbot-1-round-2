@@ -1,4 +1,5 @@
 import requests
+from urllib.parse import quote
 
 from api.config import BASE_URL
 
@@ -13,15 +14,26 @@ def get_materials(token):
     return response.json()
 
 
-def retire_material(token, material_id):
+def get_material(token, material_id):
     headers = {"Authorization": f"Bearer {token}"}
-    response = requests.post(
-        f"{BASE_URL}/kb/retire/{material_id}",
+    safe_id = quote(material_id, safe="/")
+    response = requests.get(
+        f"{BASE_URL}/kb/materials/{safe_id}",
         headers=headers,
     )
     response.raise_for_status()
     return response.json()
 
+
+def retire_material(token, material_id):
+    headers = {"Authorization": f"Bearer {token}"}
+    safe_id = quote(material_id, safe="/")
+    response = requests.post(
+        f"{BASE_URL}/kb/retire/{safe_id}",
+        headers=headers,
+    )
+    response.raise_for_status()
+    return response.json()
 
 def get_cohorts(token):
     headers = {"Authorization": f"Bearer {token}"}
@@ -38,6 +50,18 @@ def onboard_cohort(token, cohort_id):
     response = requests.post(
         f"{BASE_URL}/kb/cohorts/{cohort_id}/onboard",
         headers=headers,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+def reingest_materials(token, materials):
+    """materials: list[dict] matching the backend's RawMaterial schema."""
+    headers = {"Authorization": f"Bearer {token}"}
+    response = requests.post(
+        f"{BASE_URL}/kb/reingest",
+        headers=headers,
+        json=materials,
     )
     response.raise_for_status()
     return response.json()
