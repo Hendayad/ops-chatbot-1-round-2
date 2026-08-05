@@ -6,7 +6,6 @@ from typing import (
     AsyncGenerator,
     Optional,
     cast,
-    TypedDict,
 )
 from urllib.parse import quote_plus
 
@@ -30,7 +29,6 @@ from langgraph.graph.state import (
     CompiledStateGraph,
 )
 from langgraph.types import (
-    RetryPolicy,
     StateSnapshot,
 )
 from psycopg import (
@@ -231,17 +229,16 @@ class LangGraphAgent:
         """
         if self._graph is None:
             try:
-                # Fallback schema validation type checking bypass via general dict representation
+                # Every learner question must pass through cohort-scoped
+                # retrieval. This node returns either a grounded answer with
+                # validated citations or a safe refusal.
                 graph_builder = StateGraph(GraphState)
-                graph_builder.add_node("chat", self._chat, destinations=("tool_call", END))
                 graph_builder.add_node(
-                    "tool_call",
-                    self._tool_call,
-                    destinations=("chat",),
-                    retry_policy=RetryPolicy(max_attempts=3),
+                    "grounded_answer",
+                    grounded_answer,
                 )
-                graph_builder.set_entry_point("chat")
-                graph_builder.set_finish_point("chat")
+                graph_builder.set_entry_point("grounded_answer")
+                graph_builder.set_finish_point("grounded_answer")
 
                 # Get connection pool (may be None in production if DB unavailable)
                 connection_pool = await self._get_connection_pool()
@@ -294,6 +291,7 @@ class LangGraphAgent:
         session_id: str,
         user_id: Optional[str] = None,
         username: Optional[str] = None,
+        cohort_id: Optional[str] = None,
     ) -> list[Any]:
         """Get a response from the LLM.
 
@@ -302,6 +300,7 @@ class LangGraphAgent:
             session_id (str): The session ID for the conversation.
             user_id (Optional[str]): The user ID for the conversation.
             username (Optional[str]): The display name of the user.
+            cohort_id (Optional[str]): Trusted cohort from the authenticated session.
 
         Returns:
             list[Any]: The response from the LLM.
@@ -309,12 +308,16 @@ class LangGraphAgent:
         graph = await self._get_graph()
         callbacks: list[BaseCallbackHandler] = [langfuse_callback_handler] if settings.LANGFUSE_TRACING_ENABLED else []
         config: RunnableConfig = {
-            "configurable": {"thread_id": session_id},
+            "configurable": {
+                "thread_id": session_id,
+                "cohort_id": cohort_id,
+            },
             "callbacks": callbacks,
             "metadata": {
                 "user_id": user_id,
                 "username": username,
                 "session_id": session_id,
+                "cohort_id": cohort_id,
                 "environment": settings.ENVIRONMENT.value,
                 "debug": settings.DEBUG,
             },
@@ -341,6 +344,7 @@ class LangGraphAgent:
                         "long_term_memory": relevant_memory,
                         "session_id": session_id,
                         "user_id": user_id,
+                        "cohort_id": cohort_id,
                     },
                     config=config,
                 )
@@ -370,6 +374,7 @@ class LangGraphAgent:
         session_id: str,
         user_id: Optional[str] = None,
         username: Optional[str] = None,
+        cohort_id: Optional[str] = None,
     ) -> AsyncGenerator[str, None]:
         """Get a stream response from the LLM.
 
@@ -378,18 +383,23 @@ class LangGraphAgent:
             session_id (str): The session ID for the conversation.
             user_id (Optional[str]): The user ID for the conversation.
             username (Optional[str]): The display name of the user.
+            cohort_id (Optional[str]): Trusted cohort from the authenticated session.
 
         Yields:
             str: Tokens of the LLM response.
         """
         callbacks: list[BaseCallbackHandler] = [langfuse_callback_handler] if settings.LANGFUSE_TRACING_ENABLED else []
         config: RunnableConfig = {
-            "configurable": {"thread_id": session_id},
+            "configurable": {
+                "thread_id": session_id,
+                "cohort_id": cohort_id,
+            },
             "callbacks": callbacks,
             "metadata": {
                 "user_id": user_id,
                 "username": username,
                 "session_id": session_id,
+                "cohort_id": cohort_id,
                 "environment": settings.ENVIRONMENT.value,
                 "debug": settings.DEBUG,
             },
@@ -413,6 +423,7 @@ class LangGraphAgent:
                     "long_term_memory": relevant_memory,
                     "session_id": session_id,
                     "user_id": user_id,
+                    "cohort_id": cohort_id,
                 }
 
             async for token, _ in graph.astream(
@@ -482,17 +493,10 @@ class LangGraphAgent:
         `app.notifications.learner_chat_channel.LearnerChatChannel`
         delivering an at-risk nudge.
 
-        `as_node="chat"` is required on the `aupdate_state` call below:
-        this graph has two nodes ("chat" and "tool_call") that can both
-        write to the "messages" channel, so an out-of-band update with no
-        node context raises `InvalidUpdateError: Ambiguous update, specify
-        as_node`. "chat" is correct here because an out-of-band nudge is
-        conceptually an assistant turn, same as the real "chat" node's
-        `Command(update={"messages": [response_message]})` -- it also
-        matches how `_chat` routes to `END` for a plain-text AIMessage
-        (only tool calls route to "tool_call"), so this leaves the graph
-        in the same "finished turn, ready for the next one" state a normal
-        assistant reply would.
+        `as_node="grounded_answer"` is required on the `aupdate_state` call below:
+        the live workflow uses "grounded_answer" as its assistant node. Naming
+        that node keeps the checkpoint update unambiguous and leaves the
+        workflow ready for the learner's next turn.
 
         Args:
             session_id: The chat session to append to (== thread_id).
@@ -527,7 +531,11 @@ class LangGraphAgent:
                 if getattr(existing, "additional_kwargs", {}).get("dedup_key") == skip_if_dedup_key:
                     return
 
-        await graph.aupdate_state(config, {"messages": existing_messages + [message]}, as_node="chat")
+        await graph.aupdate_state(
+            config,
+            {"messages": existing_messages + [message]},
+            as_node="grounded_answer",
+        )
 
     def __process_messages(self, messages: list[BaseMessage]) -> list[Any]:
         openai_style_messages = convert_to_openai_messages(messages)

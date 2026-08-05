@@ -177,6 +177,7 @@ async def chat(
             session.id,
             user_id=str(session.user_id),
             username=session.username,
+            cohort_id=session.cohort_id,
         )
 
         escalation_message = await _run_escalation_flow(result, session)
@@ -184,7 +185,7 @@ async def chat(
             result.append(escalation_message.model_dump())
 
         logger.info("chat_request_processed", session_id=session.id)
-        return ChatResponse(messages=result)
+        return ChatResponse(messages=result, cohort_id=session.cohort_id)
     except Exception as exc:
         logger.exception(
             "chat_request_failed",
@@ -224,9 +225,10 @@ async def chat_stream(
                         session.id,
                         user_id=str(session.user_id),
                         username=session.username,
+                        cohort_id=session.cohort_id,
                     ):
                         streamed_chunks.append(chunk)
-                        response = StreamResponse(content=chunk, done=False)
+                        response = StreamResponse(content=chunk, done=False, cohort_id=session.cohort_id)
                         yield f"data: {json.dumps(response.model_dump(mode='json'))}\n\n"
 
                 # Prefer the checkpointed conversation because it contains prior
@@ -252,10 +254,11 @@ async def chat_stream(
                     response = StreamResponse(
                         content=f"\n\n{escalation_message.content}",
                         done=False,
+                        cohort_id=session.cohort_id,
                     )
                     yield f"data: {json.dumps(response.model_dump(mode='json'))}\n\n"
 
-                final_response = StreamResponse(content="", done=True)
+                final_response = StreamResponse(content="", done=True, cohort_id=session.cohort_id)
                 yield f"data: {json.dumps(final_response.model_dump(mode='json'))}\n\n"
 
             except Exception as exc:
@@ -267,6 +270,7 @@ async def chat_stream(
                 error_response = StreamResponse(
                     content="Unable to complete the chat request.",
                     done=True,
+                    cohort_id=session.cohort_id,
                 )
                 yield f"data: {json.dumps(error_response.model_dump(mode='json'))}\n\n"
 
@@ -290,7 +294,7 @@ async def get_session_messages(
     """Get all messages for the authenticated session."""
     try:
         messages = await agent.get_chat_history(session.id)
-        return ChatResponse(messages=messages)
+        return ChatResponse(messages=messages, cohort_id=session.cohort_id)
     except Exception as exc:
         logger.exception(
             "get_messages_failed",
