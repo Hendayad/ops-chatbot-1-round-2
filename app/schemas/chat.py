@@ -72,9 +72,11 @@ class ChatResponse(BaseResponse):
 
     Attributes:
         messages: List of messages in the conversation.
+        cohort_id: Cohort associated with the authenticated session.
     """
 
     messages: List[Message] = Field(..., description="List of messages in the conversation")
+    cohort_id: str | None = Field(default=None, description="Cohort associated with the authenticated chat session")
 
 
 class StreamResponse(BaseResponse):
@@ -83,10 +85,12 @@ class StreamResponse(BaseResponse):
     Attributes:
         content: The content of the current chunk.
         done: Whether the stream is complete.
+        cohort_id: Cohort associated with the authenticated session.
     """
 
     content: str = Field(default="", description="The content of the current chunk")
     done: bool = Field(default=False, description="Whether the stream is complete")
+    cohort_id: str | None = Field(default=None, description="Cohort associated with the authenticated chat session")
 
 
 class SessionTitle(BaseModel):

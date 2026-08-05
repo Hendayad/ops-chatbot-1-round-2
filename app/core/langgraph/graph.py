@@ -54,6 +54,8 @@ from app.core.observability import langfuse_callback_handler
 from app.core.prompts import load_system_prompt
 from app.services.llm import llm_service
 from app.services.memory import memory_service
+from app.graph.nodes.answer import grounded_answer
+from app.schemas.graph import GraphState
 from app.utils import (
     dump_messages,
     extract_text_content,
@@ -62,11 +64,6 @@ from app.utils import (
 )
 
 PostgresConnPool = AsyncConnectionPool[AsyncConnection[DictRow]]
-
-
-class GraphState(TypedDict, total=False):
-    messages: list[Any]
-    long_term_memory: str
 
 
 class LangGraphAgent:

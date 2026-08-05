@@ -152,7 +152,7 @@ class DatabaseService:
             return True
 
     async def create_session(
-        self, session_id: str, user_id: int, name: str = "", username: str | None = None
+        self, session_id: str, user_id: int, name: str = "", username: str | None = None, cohort_id: str | None = None
     ) -> ChatSession:
         """Create a new chat session.
 
@@ -166,11 +166,11 @@ class DatabaseService:
             ChatSession: The created session
         """
         with Session(self.engine) as session:
-            chat_session = ChatSession(id=session_id, user_id=user_id, name=name, username=username)
+            chat_session = ChatSession(id=session_id, user_id=user_id, name=name, username=username, cohort_id=cohort_id)
             session.add(chat_session)
             session.commit()
             session.refresh(chat_session)
-            logger.info("session_created", session_id=session_id, user_id=user_id, name=name)
+            logger.info("session_created", session_id=session_id, user_id=user_id, name=name, cohort_id=cohort_id)
             return chat_session
 
     async def delete_session(self, session_id: str) -> bool:
