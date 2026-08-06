@@ -24,7 +24,7 @@ class DatabaseProfileRepository:
             return LearnerProfile(
                 preferred_name=user.preferred_name,
                 timezone=user.timezone,
-                cohort=user.cohort,
+                cohort=user.cohort_id,
             )
 
     async def save(
@@ -44,7 +44,7 @@ class DatabaseProfileRepository:
 
             user.preferred_name = profile.preferred_name
             user.timezone = profile.timezone
-            user.cohort = profile.cohort
+            user.cohort_id = profile.cohort
 
             session.add(user)
             session.commit()

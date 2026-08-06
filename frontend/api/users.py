@@ -14,10 +14,10 @@ def get_users(token):
     return response.json()
 
 
-def update_role(token, user_id, role, cohort=None):
+def update_role(token, user_id, role, cohort_id=None):
     payload = {
         "role": role,
-        "cohort": cohort,
+        "cohort_id": cohort_id,
     }
 
     response = requests.patch(

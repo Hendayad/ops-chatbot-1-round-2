@@ -5,9 +5,24 @@
     "enabled": true,
     "materials": [
       {
+        "title": "Cohort A FAQ",
+        "source": "faqs/faq.md",
+        "type": "faq"
+      },
+      {
         "title": "Cohort A Schedule",
-        "source": "schedule.md",
+        "source": "schedules/schedule.md",
         "type": "schedule"
+      },
+      {
+        "title": "Cohort A Getting Started",
+        "source": "onboarding/getting-started.md",
+        "type": "onboarding"
+      },
+      {
+        "title": "Cohort A Learner Handbook",
+        "source": "docs/handbook.md",
+        "type": "program_doc"
       }
     ]
   },
@@ -17,9 +32,24 @@
     "enabled": true,
     "materials": [
       {
+        "title": "Cohort B FAQ",
+        "source": "faqs/faq.md",
+        "type": "faq"
+      },
+      {
         "title": "Cohort B Schedule",
-        "source": "schedule.md",
+        "source": "schedules/schedule.md",
         "type": "schedule"
+      },
+      {
+        "title": "Cohort B Getting Started",
+        "source": "onboarding/getting-started.md",
+        "type": "onboarding"
+      },
+      {
+        "title": "Cohort B Learner Handbook",
+        "source": "docs/handbook.md",
+        "type": "program_doc"
       }
     ]
   }

@@ -36,7 +36,7 @@ from app.kb.schema import (
     normalize_content,
 )
 
-# Dimensionality of ``text-embedding-3-small`` (the project's default embedder).
+# Dimensionality of ``gemini-embedding-001`` (the project's default embedder).
 DEFAULT_EMBEDDING_DIM = 1536
 
 # Physical table backing the knowledge base. Owned entirely by this lane; it is
@@ -79,6 +79,7 @@ class ChunkRepository(Protocol):
             source has never been ingested.
         """
         ...
+
     def get_source(self, source_id: str) -> dict | None:
         ...
 
@@ -172,7 +173,7 @@ def chunk_document(
         start = 0
         step = max_chars - overlap
         while start < len(block):
-            windows.append(block[start : start + max_chars])
+            windows.append(block[start: start + max_chars])
             start += step
 
     return [
@@ -231,8 +232,10 @@ class KBStore:
                 continue
 
             chunks = chunk_document(material)
-            embeddings = self._embedder.embed([chunk.content for chunk in chunks]) if chunks else []
-            self._repository.replace_source(material.source_id, chunks, embeddings)
+            embeddings = self._embedder.embed(
+                [chunk.content for chunk in chunks]) if chunks else []
+            self._repository.replace_source(
+                material.source_id, chunks, embeddings)
 
             stats.sources_ingested += 1
             stats.chunks_written += len(chunks)
@@ -252,6 +255,7 @@ class KBStore:
             chunks_written=stats.chunks_written,
         )
         return stats
+
     def get_material(self, source_id: str) -> dict | None:
         return self._repository.get_source(source_id)
 
@@ -269,7 +273,8 @@ class KBStore:
             True if the material was found and retired, False if it didn't exist.
         """
         retired = self._repository.retire_source(source_id)
-        logger.info("kb_material_retired", source_id=source_id, retired=retired)
+        logger.info("kb_material_retired",
+                    source_id=source_id, retired=retired)
         return retired
 
 
@@ -324,22 +329,22 @@ class GeminiEmbedder:
         """Generate and validate document embeddings."""
         if not texts:
             return []
-    
+
         vectors = self._client.embed_documents(texts)
-    
+
         if len(vectors) != len(texts):
             raise RuntimeError(
                 "The embedding provider returned an unexpected "
                 "number of vectors."
             )
-    
+
         for index, vector in enumerate(vectors):
             if len(vector) != self._dimension:
                 raise RuntimeError(
                     f"Embedding {index} has {len(vector)} dimensions; "
                     f"expected {self._dimension}."
                 )
-    
+
         return vectors
 
 
@@ -399,7 +404,8 @@ class PgVectorChunkRepository:
         """Return the stored content hash for a source, or ``None``."""
         with Session(self._engine) as session:
             row = session.execute(
-                text(f"SELECT content_hash FROM {_TABLE_NAME} WHERE source_id = :sid LIMIT 1"),
+                text(
+                    f"SELECT content_hash FROM {_TABLE_NAME} WHERE source_id = :sid LIMIT 1"),
                 {"sid": source_id},
             ).first()
         return row[0] if row is not None else None
@@ -444,6 +450,7 @@ class PgVectorChunkRepository:
                     },
                 )
             session.commit()
+
     def get_source(self, source_id: str) -> dict | None:
         with Session(self._engine) as session:
             row = session.execute(

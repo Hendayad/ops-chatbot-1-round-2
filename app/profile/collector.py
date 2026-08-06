@@ -64,13 +64,15 @@ class PostgresProfileRepository:
 
     def __init__(self, session_factory: Callable[[], Session] | None = None) -> None:
         """Initialize with database session provider."""
-        self._session_factory = session_factory or (lambda: Session(database_service.engine))
+        self._session_factory = session_factory or (
+            lambda: Session(database_service.engine))
 
     async def load(self, user_id: str) -> LearnerProfile:
         """Load learner profile from database or return default empty profile."""
         with self._session_factory() as session:
             record = session.exec(
-                select(LearnerProfileRecord).where(LearnerProfileRecord.user_id == str(user_id))
+                select(LearnerProfileRecord).where(
+                    LearnerProfileRecord.user_id == str(user_id))
             ).first()
             if not record:
                 return LearnerProfile()
@@ -84,7 +86,8 @@ class PostgresProfileRepository:
         """Save or update learner profile in database."""
         with self._session_factory() as session:
             record = session.exec(
-                select(LearnerProfileRecord).where(LearnerProfileRecord.user_id == str(user_id))
+                select(LearnerProfileRecord).where(
+                    LearnerProfileRecord.user_id == str(user_id))
             ).first()
             if record is None:
                 record = LearnerProfileRecord(

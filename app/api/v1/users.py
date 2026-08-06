@@ -41,7 +41,7 @@ async def get_users(
                 "email": user.email,
                 "username": user.username,
                 "role": user.role.value,
-                "cohort": user.cohort,
+                "cohort_id": user.cohort_id,
                 "is_ops": user.is_ops,
             }
             for user in users
@@ -115,9 +115,9 @@ async def update_user_role(
 
         # Only learners have a cohort
         if new_role == UserRole.LEARNER:
-            target_user.cohort = data.get("cohort") or "Unassigned"
+            target_user.cohort_id = data.get("cohort_id") or "Unassigned"
         else:
-            target_user.cohort = None
+            target_user.cohort_id = None
 
         session.add(target_user)
         session.commit()
@@ -128,7 +128,7 @@ async def update_user_role(
             "email": target_user.email,
             "username": target_user.username,
             "role": target_user.role.value,
-            "cohort": target_user.cohort,
+            "cohort_id": target_user.cohort_id,
             "is_ops": target_user.is_ops,
         }
 
@@ -145,7 +145,7 @@ async def get_me(
         "username": current_user.username,
         "email": current_user.email,
         "role": current_user.role.value,
-        "cohort": current_user.cohort,
+        "cohort_id": current_user.cohort_id,
         "is_ops": current_user.is_ops,
     }
 from fastapi import APIRouter, Depends, HTTPException
@@ -352,7 +352,8 @@ async def get_me(
         "username": current_user.username,
         "email": current_user.email,
         "role": current_user.role.value,
-        "cohort": current_user.cohort,
+        "is_ops": current_user.is_ops,
+        "cohort_id": current_user.cohort_id,
     }
 
 
@@ -374,9 +375,9 @@ async def get_my_teammates(
     than an error, so the frontend can show "not assigned yet" instead of
     crashing.
     """
-    if not current_user.cohort:
+    if not current_user.cohort_id:
         return {
-            "cohort": None,
+            "cohort_id": None,
             "teammates": [],
         }
 
@@ -385,13 +386,13 @@ async def get_my_teammates(
         teammates = session.exec(
             select(User)
             .where(
-                User.cohort == current_user.cohort,
+                User.cohort_id == current_user.cohort_id,
                 User.id != current_user.id,
             )
         ).all()
 
         return {
-            "cohort": current_user.cohort,
+            "cohort_id": current_user.cohort_id,
             "teammates": [
                 {
                     "id": user.id,
