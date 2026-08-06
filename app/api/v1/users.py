@@ -366,6 +366,10 @@ async def get_my_teammates(
 ):
     """Return the current user's group (cohort) and the teammates in it.
 
+    Includes each teammate's email deliberately: learners are expected to be
+    able to contact their group directly (rendered on the Settings page). If
+    that changes, drop the field here rather than only hiding it in the UI.
+
     A learner with no cohort assigned yet gets an empty teammate list rather
     than an error, so the frontend can show "not assigned yet" instead of
     crashing.
