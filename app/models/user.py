@@ -57,11 +57,6 @@ class User(BaseModel, table=True):
         max_length=64,
     )
 
-    cohort: Optional[str] = Field(
-        default=None,
-        max_length=80,
-    )
-
     is_ops: bool = Field(
         default=False,
         description="Ops/admin authorization flag required for Ops-only endpoints (e.g. /atrisk/*).",
@@ -70,7 +65,6 @@ class User(BaseModel, table=True):
     role: UserRole = UserRole.LEARNER
     preferred_name: Optional[str] = Field(default=None)
     timezone: Optional[str] = Field(default=None)
-    cohort: Optional[str] = Field(default=None)
 
     notification_preference: Optional["NotificationPreference"] = Relationship(
         back_populates="user",
