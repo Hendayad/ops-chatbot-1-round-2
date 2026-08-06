@@ -3,3 +3,4 @@
 *.env text eol=lf
 .env.* text eol=lf
 Makefile text eol=lf
+*.py text eol=lf
