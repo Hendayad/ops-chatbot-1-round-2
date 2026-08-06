@@ -203,13 +203,13 @@ class LangGraphAgent:
         Returns:
             Command: Command object with updated messages and routing back to chat.
         """
-        tool_calls = state.messages[-1].tool_calls
+        tool_calls = state["messages"][-1].tool_calls
 
         async def _execute_tool(tool_call: dict) -> ToolMessage:
             tool_args = dict(tool_call["args"])
             if tool_call["name"] == "escalate_to_human":
-                tool_args.setdefault("session_id", state.session_id)
-                tool_args.setdefault("user_id", state.user_id)
+                tool_args.setdefault("session_id", state.get("session_id"))
+                tool_args.setdefault("user_id", state.get("user_id"))
 
             tool_result = await self.tools_by_name[tool_call["name"]].ainvoke(tool_args)
             return ToolMessage(
