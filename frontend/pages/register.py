@@ -1,4 +1,5 @@
 import streamlit as st
+import re
 
 from components.styles import page_header
 from api.register import register
@@ -33,15 +34,30 @@ def show_register():
         elif len(password) < 8:
             st.warning("Password must be at least 8 characters.")
 
+        elif not re.search(r"[A-Z]", password):
+            st.warning("Password must contain at least one uppercase letter.")
+
+        elif not re.search(r"[a-z]", password):
+            st.warning("Password must contain at least one lowercase letter.")
+
+        elif not re.search(r"\d", password):
+            st.warning("Password must contain at least one number.")
+
+        elif not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
+            st.warning(
+                "Password must contain a special character, "
+                'such as !, @, #, $, %, or &.'
+            )
+
         elif password != confirm_password:
             st.error("Passwords do not match.")
 
         else:
-
-            with st.spinner("Creating account..."):
-                result = register(email, username, password)
-
-            if result:
+            try:
+                with st.spinner("Creating account..."):
+                    register(email, username, password)
+        
                 st.success("Account created successfully! Please login.")
-            else:
-                st.error("Registration failed. That email or username may already be in use.")
+        
+            except Exception as exc:
+                st.error(f"Registration failed: {exc}")
