@@ -21,7 +21,7 @@ import json
 from pathlib import Path
 
 from app.core.logging import logger
-from app.schemas.knowledge import (
+from app.kb.schema import (
     RawMaterial,
     SourceMetadata,
     SourceType,

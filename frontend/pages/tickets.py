@@ -88,7 +88,12 @@ def show_tickets():
             reload_data=False,
         )
 
+        # streamlit-aggrid returns None (not []) for selected_rows on some
+        # versions before any row has been clicked — guard against that
+        # before calling len() on it.
         selected = grid_response["selected_rows"]
+        if selected is None:
+            selected = []
 
         if len(selected) == 0:
             st.info("Select a ticket from the table above.")

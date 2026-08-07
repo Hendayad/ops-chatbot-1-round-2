@@ -1,8 +1,9 @@
 """Configuration-driven multi-cohort support.
 
 The configuration file maps each cohort to its approved Operations materials.
-A new cohort can be added by updating JSON configuration and supplying the
-listed files, without changing application code.
+A new cohort can be added either by editing the JSON configuration directly,
+or through the mutation methods on ``CohortConfigLoader`` (used by the
+``/kb/cohorts`` API routes), without changing application code.
 
 Default configuration path:
     cohorts_config.json
@@ -10,27 +11,23 @@ Default configuration path:
 Override it with:
     COHORTS_CONFIG_PATH=cohorts_config.json
 
+Materials for newly created cohorts are written under:
+    MATERIALS_BASE_DIR (default: current working directory)
+joined with each cohort's ``materials_root``.
+
 Expected JSON shape:
 {
   "cohort-a": {
     "name": "Cohort A",
     "materials_root": "materials/cohort-a",
     "enabled": true,
+    "description": "Optional free-text description",
+    "project": "Optional project label",
+    "start_date": "2026-01-05",
+    "end_date": "2026-04-30",
     "materials": [
       {
         "title": "Cohort A Schedule",
-        "source": "schedule.md",
-        "type": "schedule"
-      }
-    ]
-  },
-  "cohort-b": {
-    "name": "Cohort B",
-    "materials_root": "materials/cohort-b",
-    "enabled": true,
-    "materials": [
-      {
-        "title": "Cohort B Schedule",
         "source": "schedule.md",
         "type": "schedule"
       }
@@ -41,13 +38,18 @@ Expected JSON shape:
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
+import tempfile
+import threading
+from datetime import date
 from pathlib import Path
 from typing import Any
+import shutil
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from app.cohorts.scope import normalize_cohort
 from app.core.logging import logger
@@ -55,6 +57,7 @@ from app.kb.schema import SourceMetadata, SourceType
 
 DEFAULT_CONFIG_PATH = "cohorts_config.json"
 _COHORT_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{0,99}$")
+_SAFE_FILENAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$")
 
 
 class ConfigModel(BaseModel):
@@ -93,6 +96,10 @@ class CohortDefinition(ConfigModel):
     name: str = Field(min_length=1, max_length=200)
     materials_root: str = Field(min_length=1, max_length=1000)
     enabled: bool = True
+    description: str | None = Field(default=None, max_length=2000)
+    project: str | None = Field(default=None, max_length=200)
+    start_date: date | None = None
+    end_date: date | None = None
     materials: list[MaterialConfig] = Field(default_factory=list)
 
     @field_validator("cohort_id")
@@ -111,7 +118,10 @@ class CohortDefinition(ConfigModel):
     @classmethod
     def normalize_materials_root(cls, value: str) -> str:
         """Normalize the configured directory without requiring it to exist yet."""
-        return Path(value).as_posix()
+        path = Path(value)
+        if path.is_absolute() or ".." in path.parts:
+            raise ValueError("materials_root must be a relative, non-escaping path")
+        return path.as_posix()
 
     @field_validator("materials")
     @classmethod
@@ -124,6 +134,13 @@ class CohortDefinition(ConfigModel):
         if len(sources) != len(set(sources)):
             raise ValueError("materials contains duplicate source paths")
         return materials
+
+    @model_validator(mode="after")
+    def validate_date_range(self) -> "CohortDefinition":
+        """Ensure the cohort's end date does not precede its start date."""
+        if self.start_date and self.end_date and self.end_date < self.start_date:
+            raise ValueError("end_date must not be before start_date")
+        return self
 
     def to_source_metadata(self) -> list[SourceMetadata]:
         """Convert configured materials into ingestion-ready metadata."""
@@ -138,13 +155,41 @@ class CohortDefinition(ConfigModel):
         ]
 
 
+def _slugify_cohort_id(name: str) -> str:
+    """Derive a URL/JSON-safe cohort id from a human-readable name."""
+    slug = re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")
+    return slug or "cohort"
+
+
+class CohortConfigError(ValueError):
+    """Raised when a cohort mutation fails validation."""
+
+
+class CohortNotFoundError(CohortConfigError):
+    """Raised when an operation targets a cohort that does not exist."""
+
+
+class CohortAlreadyExistsError(CohortConfigError):
+    """Raised when creating a cohort whose id already exists."""
+
+
+class MaterialNotFoundError(CohortConfigError):
+    """Raised when removing a material that isn't configured."""
+
+
 class CohortConfigLoader:
-    """Load and validate cohort definitions from a JSON file.
+    """Load, validate, and mutate cohort definitions in a JSON file.
 
     The file is read on every call so deployment configuration changes take
-    effect without rebuilding the application. Invalid entries are skipped and
-    logged. A malformed existing file fails closed: cohort gating remains
-    enabled, but no cohort is considered servable.
+    effect without rebuilding the application. Invalid entries are skipped
+    and logged on read. A malformed existing file fails closed: cohort
+    gating remains enabled, but no cohort is considered servable.
+
+    Mutations (create/update/delete cohort, add/remove material) are
+    serialized with an in-process lock and written atomically so concurrent
+    API requests can't corrupt the file. This guards against races within a
+    single process; if you run multiple worker processes, put a file lock
+    (e.g. via ``filelock``) around ``_write_file`` as well.
     """
 
     def __init__(self, config_path: str | Path | None = None) -> None:
@@ -158,15 +203,25 @@ class CohortConfigLoader:
             "COHORTS_CONFIG_PATH",
             DEFAULT_CONFIG_PATH,
         )
+        self._lock = threading.Lock()
 
     @property
     def path(self) -> Path:
         """Return the active configuration path."""
         return Path(self.config_path)
 
+    @property
+    def materials_base_dir(self) -> Path:
+        """Return the base directory that ``materials_root`` values are relative to."""
+        return Path(os.getenv("MATERIALS_BASE_DIR", "."))
+
     def config_exists(self) -> bool:
         """Return whether a cohort configuration file was supplied."""
         return self.path.is_file()
+
+    # ------------------------------------------------------------------
+    # Reads
+    # ------------------------------------------------------------------
 
     def _read_file(self) -> dict[str, CohortDefinition]:
         """Read all valid cohort definitions."""
@@ -242,6 +297,20 @@ class CohortConfigLoader:
             if include_disabled or definition.enabled
         )
 
+    def list_definitions(
+        self, *, include_disabled: bool = False
+    ) -> list[CohortDefinition]:
+        """Return full cohort definitions in stable (name) order."""
+        cohorts = self._read_file()
+        return sorted(
+            (
+                definition
+                for definition in cohorts.values()
+                if include_disabled or definition.enabled
+            ),
+            key=lambda definition: definition.name.lower(),
+        )
+
     def get(self, cohort_id: str | None) -> CohortDefinition | None:
         """Return one enabled cohort definition, or ``None``."""
         normalized = normalize_cohort(cohort_id)
@@ -252,6 +321,13 @@ class CohortConfigLoader:
         if definition is None or not definition.enabled:
             return None
         return definition
+
+    def get_any(self, cohort_id: str | None) -> CohortDefinition | None:
+        """Return a cohort definition regardless of its enabled state."""
+        normalized = normalize_cohort(cohort_id)
+        if not normalized:
+            return None
+        return self._read_file().get(normalized)
 
     def is_known_cohort(self, cohort_id: str | None) -> bool:
         """Return whether an enabled cohort exists."""
@@ -271,6 +347,10 @@ class CohortConfigLoader:
                 "name": "",
                 "materials_root": "",
                 "enabled": False,
+                "description": None,
+                "project": None,
+                "start_date": None,
+                "end_date": None,
                 "materials": [],
             }
         return definition.model_dump(mode="json")
@@ -284,6 +364,261 @@ class CohortConfigLoader:
         """Return the configured materials directory for one cohort."""
         definition = self.get(cohort_id)
         return Path(definition.materials_root) if definition else None
+
+    def get_materials_abs_path(self, cohort_id: str) -> Path | None:
+        """Return the resolved, absolute materials directory for a cohort."""
+        definition = self.get_any(cohort_id)
+        if definition is None:
+            return None
+        return self.materials_base_dir / definition.materials_root
+
+    # ------------------------------------------------------------------
+    # Writes
+    # ------------------------------------------------------------------
+
+    def _write_file(self, cohorts: dict[str, CohortDefinition]) -> None:
+        """Atomically persist all cohort definitions back to the config file."""
+        payload = {
+            cohort_id: definition.model_dump(mode="json", exclude={"cohort_id"})
+            for cohort_id, definition in cohorts.items()
+        }
+
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+
+        fd, tmp_name = tempfile.mkstemp(
+            dir=str(self.path.parent) or ".",
+            prefix=f".{self.path.name}.",
+            suffix=".tmp",
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as tmp_file:
+                json.dump(payload, tmp_file, indent=2, sort_keys=True)
+                tmp_file.write("\n")
+            os.replace(tmp_name, self.path)
+        except BaseException:
+            with contextlib.suppress(OSError):
+                os.unlink(tmp_name)
+            raise
+
+    def create_cohort(
+        self,
+        *,
+        name: str,
+        materials_root: str | None = None,
+        description: str | None = None,
+        project: str | None = None,
+        start_date: date | None = None,
+        end_date: date | None = None,
+        enabled: bool = True,
+    ) -> CohortDefinition:
+        """Create and persist a new cohort, returning its validated definition.
+
+        Raises:
+            CohortAlreadyExistsError: if the derived/normalized id collides.
+            CohortConfigError: if the resulting definition fails validation.
+        """
+        with self._lock:
+            cohorts = self._read_file()
+
+            base_id = _slugify_cohort_id(name)
+            candidate_id = base_id
+            suffix = 2
+            while candidate_id in cohorts:
+                candidate_id = f"{base_id}-{suffix}"
+                suffix += 1
+
+            resolved_root = materials_root or f"materials/{candidate_id}"
+
+            try:
+                definition = CohortDefinition(
+                    cohort_id=candidate_id,
+                    name=name,
+                    materials_root=resolved_root,
+                    enabled=enabled,
+                    description=description,
+                    project=project,
+                    start_date=start_date,
+                    end_date=end_date,
+                    materials=[],
+                )
+            except ValidationError as exc:
+                raise CohortConfigError(str(exc)) from exc
+
+            cohorts[definition.cohort_id] = definition
+            self._write_file(cohorts)
+
+            (self.materials_base_dir / definition.materials_root).mkdir(
+                parents=True, exist_ok=True
+            )
+
+            logger.info("cohort_created", cohort_id=definition.cohort_id)
+            return definition
+
+    def update_cohort(
+        self,
+        cohort_id: str,
+        *,
+        name: str | None = None,
+        enabled: bool | None = None,
+        description: str | None = ...,  # type: ignore[assignment]
+        project: str | None = ...,  # type: ignore[assignment]
+        start_date: date | None = ...,  # type: ignore[assignment]
+        end_date: date | None = ...,  # type: ignore[assignment]
+    ) -> CohortDefinition:
+        """Update mutable fields on an existing cohort.
+
+        Fields left as the default sentinel (``...``) are left unchanged;
+        pass ``None`` explicitly to clear an optional field.
+
+        Raises:
+            CohortNotFoundError: if no cohort with this id exists.
+            CohortConfigError: if the resulting definition fails validation.
+        """
+        normalized = normalize_cohort(cohort_id)
+        with self._lock:
+            cohorts = self._read_file()
+            existing = cohorts.get(normalized) if normalized else None
+            if existing is None:
+                raise CohortNotFoundError(f"cohort '{cohort_id}' does not exist")
+
+            updated_fields = existing.model_dump(mode="python")
+            if name is not None:
+                updated_fields["name"] = name
+            if enabled is not None:
+                updated_fields["enabled"] = enabled
+            if description is not ...:
+                updated_fields["description"] = description
+            if project is not ...:
+                updated_fields["project"] = project
+            if start_date is not ...:
+                updated_fields["start_date"] = start_date
+            if end_date is not ...:
+                updated_fields["end_date"] = end_date
+
+            try:
+                updated = CohortDefinition(**updated_fields)
+            except ValidationError as exc:
+                raise CohortConfigError(str(exc)) from exc
+
+            cohorts[updated.cohort_id] = updated
+            self._write_file(cohorts)
+            logger.info("cohort_updated", cohort_id=updated.cohort_id)
+            return updated
+
+    def delete_cohort(self, cohort_id: str) -> None:
+        """Delete a cohort and all of its uploaded materials."""
+
+        normalized = normalize_cohort(cohort_id)
+
+        with self._lock:
+            cohorts = self._read_file()
+
+            if not normalized or normalized not in cohorts:
+                raise CohortNotFoundError(
+                    f"cohort '{cohort_id}' does not exist"
+                )
+
+            definition = cohorts[normalized]
+
+            materials_dir = (
+                self.materials_base_dir /
+                definition.materials_root
+            )
+
+            if materials_dir.exists():
+                shutil.rmtree(materials_dir)
+
+            del cohorts[normalized]
+
+            self._write_file(cohorts)
+
+            logger.info(
+                "cohort_deleted",
+                cohort_id=normalized,
+            )
+
+    def add_material(
+        self,
+        cohort_id: str,
+        *,
+        title: str,
+        source: str,
+        type: SourceType,
+    ) -> CohortDefinition:
+        """Add one material entry to a cohort.
+
+        Raises:
+            CohortNotFoundError: if no cohort with this id exists.
+            CohortConfigError: if the material or resulting definition is invalid
+                (including a duplicate ``source``).
+        """
+        normalized = normalize_cohort(cohort_id)
+        with self._lock:
+            cohorts = self._read_file()
+            existing = cohorts.get(normalized) if normalized else None
+            if existing is None:
+                raise CohortNotFoundError(f"cohort '{cohort_id}' does not exist")
+
+            try:
+                new_material = MaterialConfig(title=title, source=source, type=type)
+            except ValidationError as exc:
+                raise CohortConfigError(str(exc)) from exc
+
+            if any(m.source == new_material.source for m in existing.materials):
+                raise CohortConfigError(
+                    f"material source '{new_material.source}' already exists "
+                    f"for cohort '{normalized}'"
+                )
+
+            try:
+                updated = existing.model_copy(
+                    update={"materials": [*existing.materials, new_material]}
+                )
+                updated = CohortDefinition(**updated.model_dump(mode="python"))
+            except ValidationError as exc:
+                raise CohortConfigError(str(exc)) from exc
+
+            cohorts[updated.cohort_id] = updated
+            self._write_file(cohorts)
+            logger.info(
+                "cohort_material_added",
+                cohort_id=updated.cohort_id,
+                source=new_material.source,
+            )
+            return updated
+
+    def remove_material(self, cohort_id: str, source: str) -> CohortDefinition:
+        """Remove one material entry from a cohort by its ``source`` path.
+
+        Raises:
+            CohortNotFoundError: if no cohort with this id exists.
+            MaterialNotFoundError: if no material has that ``source``.
+        """
+        normalized = normalize_cohort(cohort_id)
+        normalized_source = Path(source).as_posix()
+        with self._lock:
+            cohorts = self._read_file()
+            existing = cohorts.get(normalized) if normalized else None
+            if existing is None:
+                raise CohortNotFoundError(f"cohort '{cohort_id}' does not exist")
+
+            remaining = [
+                m for m in existing.materials if m.source != normalized_source
+            ]
+            if len(remaining) == len(existing.materials):
+                raise MaterialNotFoundError(
+                    f"material '{source}' not found for cohort '{normalized}'"
+                )
+
+            updated = existing.model_copy(update={"materials": remaining})
+            cohorts[updated.cohort_id] = updated
+            self._write_file(cohorts)
+            logger.info(
+                "cohort_material_removed",
+                cohort_id=updated.cohort_id,
+                source=normalized_source,
+            )
+            return updated
 
 
 cohort_config = CohortConfigLoader()
@@ -314,9 +649,13 @@ def is_servable_cohort(cohort_id: str | None) -> bool:
 
 
 __all__ = [
+    "CohortAlreadyExistsError",
+    "CohortConfigError",
     "CohortConfigLoader",
     "CohortDefinition",
+    "CohortNotFoundError",
     "MaterialConfig",
+    "MaterialNotFoundError",
     "cohort_config",
     "cohort_gating_enabled",
     "is_servable_cohort",
