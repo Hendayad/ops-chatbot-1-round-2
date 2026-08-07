@@ -624,6 +624,20 @@
         });
       }
 
+      function hideCitations(content) {
+        if (!content) return "";
+
+        var text = String(content);
+
+        // Remove the visible Sources section.
+        text = text.split(/\n\s*Sources:\s*\n/i)[0];
+
+        // Remove inline citation markers like [S1], [S2], [S1][S2].
+        text = text.replace(/\s*\[S\d+\]/g, "");
+
+        return text.trim();
+      }
+
       function renderMessages(messages) {
         if (!messages.length) {
           el.transcriptBody.innerHTML = '<div class="empty-state">No messages in this session yet.</div>';
@@ -637,7 +651,11 @@
             '<div class="' + rowClass + '">' +
             '<div>' +
             badge +
-            '<div class="bubble">' + escapeHtml(m.content) + '</div>' +
+            '<div class="bubble">' + escapeHtml(
+              m.role === "assistant"
+                ? hideCitations(m.content)
+                : m.content
+            ) + '</div>' +
             '<div class="bubble-meta">' + escapeHtml(m.role) + '</div>' +
             '</div>' +
             '</div>'

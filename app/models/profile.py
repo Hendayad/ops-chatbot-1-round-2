@@ -11,5 +11,4 @@ class LearnerProfileRecord(BaseModel, table=True):
 
     user_id: str = Field(primary_key=True, index=True)
     preferred_name: str | None = Field(default=None, max_length=80)
-    timezone: str | None = Field(default=None, max_length=64)
     cohort: str | None = Field(default=None, max_length=80)
