@@ -42,11 +42,6 @@ def create_cohort_dialog():
 
     project = st.text_input("Project Name")
 
-    materials_root = st.text_input(
-        "Materials Folder (optional)",
-        placeholder="materials/my-cohort — auto-generated if left blank",
-    )
-
     start_date = st.date_input(
         "Start Date",
         value=date.today(),
@@ -79,7 +74,6 @@ def create_cohort_dialog():
                     create_cohort(
                         token,
                         name=name.strip(),
-                        materials_root=materials_root.strip() or None,
                         description=description.strip() or None,
                         project=project.strip() or None,
                         start_date=start_date,
@@ -260,7 +254,6 @@ def delete_cohort_dialog(cohort):
                 delete_cohort(
                     token,
                     cohort["cohort_id"],
-                    delete_files=True,
                 )
 
             except CohortAPIError as exc:
@@ -380,18 +373,9 @@ def show_cohorts():
             if meta_bits:
                 st.markdown(" &nbsp;·&nbsp; ".join(meta_bits))
 
-            st.markdown(
-                f"""
-**Materials Folder**
-
-`{cohort['materials_root']}`
-"""
-            )
-
             st.divider()
 
-            col1, col2= st.columns(2)
-
+            col1, col2 = st.columns(2)
 
             with col1:
 

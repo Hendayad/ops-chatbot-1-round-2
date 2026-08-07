@@ -255,13 +255,33 @@ async def delete_cohort(
     cohort_id: str,
     user: User = Depends(get_current_user),
 ):
-    """Remove a cohort from the configuration. Files on disk are left alone."""
+    """Delete a cohort, its files, and all KB embeddings."""
+
     try:
+        # Delete every chunk belonging to this cohort from the KB
+        store = build_default_store()
+        store.retire_cohort(cohort_id)
+
+        # Delete the cohort configuration and files
         cohort_config.delete_cohort(cohort_id)
+
     except CohortNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
-    logger.info("cohort_deleted", user_id=user.id, cohort=cohort_id)
+    except Exception as e:
+        logger.exception(
+            "cohort_delete_failed",
+            user_id=user.id,
+            cohort=cohort_id,
+            error=str(e),
+        )
+        raise HTTPException(status_code=500, detail=str(e))
+
+    logger.info(
+        "cohort_deleted",
+        user_id=user.id,
+        cohort=cohort_id,
+    )
 
 
 @router.post("/cohorts/{cohort_id}/materials", response_model=MaterialAddOut, status_code=201)
@@ -378,12 +398,33 @@ async def remove_material(
         raise HTTPException(status_code=404, detail=str(e))
     except MaterialNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    store = build_default_store()
+    store.retire_material(source)   # or the correct source_id
 
     if delete_file:
-        materials_dir = cohort_config.materials_base_dir / updated.materials_root
-        target = (materials_dir / source).resolve()
-        if materials_dir.resolve() in target.parents:
-            target.unlink(missing_ok=True)
+    # Find the material type from the original cohort definition
+        definition = cohort_config.get_any(cohort_id)
+
+        if definition:
+            removed_material = next(
+                (m for m in definition.materials if m.source == source),
+                None,
+            )
+
+            if removed_material:
+                subdirectory = TYPE_TO_DIR.get(removed_material.type)
+
+                if subdirectory:
+                    materials_dir = (
+                        cohort_config.materials_base_dir
+                        / definition.materials_root
+                        / subdirectory
+                    )
+
+                    target = (materials_dir / source).resolve()
+
+                    if materials_dir.resolve() in target.parents:
+                        target.unlink(missing_ok=True)
 
     logger.info("cohort_material_removed", user_id=user.id, cohort=cohort_id, source=source)
     return CohortOut.from_definition(updated)

@@ -60,21 +60,5 @@
     "name": "Cohort B",
     "project": null,
     "start_date": null
-  },
-  "cohort-c": {
-    "description": "TEST",
-    "enabled": true,
-    "end_date": "2026-08-20",
-    "materials": [
-      {
-        "source": "Git Cheat Sheet.txt",
-        "title": "COHORT C",
-        "type": "program_doc"
-      }
-    ],
-    "materials_root": "materials/cohort-c",
-    "name": "Cohort c",
-    "project": null,
-    "start_date": "2026-08-03"
   }
 }

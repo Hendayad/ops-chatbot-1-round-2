@@ -117,6 +117,13 @@ class ChunkRepository(Protocol):
             True if the source existed and was deleted, False otherwise.
         """
         ...
+    def retire_cohort(self, cohort: str) -> int:
+        """Delete all chunks belonging to a cohort.
+
+        Returns:
+            Number of deleted chunks.
+        """
+        ...
 
 
 def chunk_document(
@@ -276,6 +283,17 @@ class KBStore:
         logger.info("kb_material_retired",
                     source_id=source_id, retired=retired)
         return retired
+    def retire_cohort(self, cohort: str) -> int:
+        """Delete all chunks for a cohort."""
+        deleted = self._repository.retire_cohort(cohort)
+
+        logger.info(
+            "kb_cohort_retired",
+            cohort=cohort,
+            deleted_chunks=deleted,
+        )
+
+        return deleted
 
 
 class GeminiEmbedder:
@@ -513,6 +531,24 @@ class PgVectorChunkRepository:
             )
             session.commit()
         return (result.rowcount or 0) > 0
+    def retire_cohort(self, cohort: str) -> int:
+        """Delete every chunk belonging to a cohort."""
+        with Session(self._engine) as session:
+            result = cast(
+                CursorResult,
+                session.execute(
+                    text(
+                        f"""
+                        DELETE FROM {_TABLE_NAME}
+                        WHERE cohort = :cohort
+                        """
+                    ),
+                    {"cohort": cohort},
+                ),
+            )
+            session.commit()
+
+        return result.rowcount or 0
 
 
 def build_default_store() -> KBStore:
