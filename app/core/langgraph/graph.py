@@ -54,6 +54,7 @@ from app.services.llm import llm_service
 from app.services.memory import memory_service
 from app.graph.nodes.answer import grounded_answer
 from app.schemas.graph import GraphState
+from app.graph.routing import is_small_talk
 from app.utils import (
     dump_messages,
     extract_text_content,
@@ -291,6 +292,7 @@ class LangGraphAgent:
         session_id: str,
         user_id: Optional[str] = None,
         username: Optional[str] = None,
+        first_name: Optional[str] = None,
         cohort_id: Optional[str] = None,
     ) -> list[Any]:
         """Get a response from the LLM.
@@ -305,6 +307,21 @@ class LangGraphAgent:
         Returns:
             list[Any]: The response from the LLM.
         """
+        # Handle safe conversational small talk before grounded RAG.
+        question = extract_text_content(messages[-1].content)
+
+        if is_small_talk(question):
+            name = first_name or username or "there"
+
+            return [
+                {
+                    "role": "assistant",
+                    "content": (
+                        f"I'm doing well, {name} 😊 "
+                        "How can I help you with your program today?"
+                    ),
+                }
+            ]
         graph = await self._get_graph()
         callbacks: list[BaseCallbackHandler] = [langfuse_callback_handler] if settings.LANGFUSE_TRACING_ENABLED else []
         config: RunnableConfig = {
@@ -316,6 +333,7 @@ class LangGraphAgent:
             "metadata": {
                 "user_id": user_id,
                 "username": username,
+                "first_name": first_name,
                 "session_id": session_id,
                 "cohort_id": cohort_id,
                 "environment": settings.ENVIRONMENT.value,
@@ -374,6 +392,7 @@ class LangGraphAgent:
         session_id: str,
         user_id: Optional[str] = None,
         username: Optional[str] = None,
+        first_name: Optional[str] = None,
         cohort_id: Optional[str] = None,
     ) -> AsyncGenerator[str, None]:
         """Get a stream response from the LLM.
@@ -388,6 +407,17 @@ class LangGraphAgent:
         Yields:
             str: Tokens of the LLM response.
         """
+        # Handle safe conversational small talk before grounded RAG.
+        question = extract_text_content(messages[-1].content)
+
+        if is_small_talk(question):
+            name = first_name or username or "there"
+
+            yield (
+                f"I'm doing well, {name} 😊 "
+                "How can I help you with your program today?"
+            )
+            return
         callbacks: list[BaseCallbackHandler] = [langfuse_callback_handler] if settings.LANGFUSE_TRACING_ENABLED else []
         config: RunnableConfig = {
             "configurable": {
@@ -398,6 +428,7 @@ class LangGraphAgent:
             "metadata": {
                 "user_id": user_id,
                 "username": username,
+                "first_name": first_name,
                 "session_id": session_id,
                 "cohort_id": cohort_id,
                 "environment": settings.ENVIRONMENT.value,

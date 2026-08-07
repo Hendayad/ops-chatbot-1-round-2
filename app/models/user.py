@@ -43,6 +43,15 @@ class User(BaseModel, table=True):
     """
 
     id: int = Field(default=None, primary_key=True)
+    first_name: str | None = Field(
+        default=None,
+        max_length=80,
+    )
+    
+    last_name: str | None = Field(
+        default=None,
+        max_length=80,
+    )
     email: str = Field(unique=True, index=True)
     hashed_password: str
     username: Optional[str] = Field(default=None, index=False)

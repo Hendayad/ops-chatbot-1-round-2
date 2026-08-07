@@ -37,9 +37,11 @@ from app.tickets.service import trigger_answering_escalation
 from app.tickets.summary import generate_summary
 from app.profile.collector import inchat_collection_flow
 from app.profile.repository import DatabaseProfileRepository
+from app.services.database import database_service
 
 router = APIRouter()
 agent = LangGraphAgent()
+db_service = database_service
 
 _TICKET_ID_RE = re.compile(r"\besc_[A-Za-z0-9_-]+\b")
 
@@ -171,6 +173,14 @@ async def chat(
 
         if settings.SESSION_NAMING_ENABLED:
             maybe_name_session(session.id, session.name, chat_request.messages)
+
+        user = await db_service.get_user(session.user_id)
+
+        if user is None:
+            raise HTTPException(
+                status_code=404,
+                detail="User not found",
+            )
         # ----------------------------------------
         # Profile collection
         # ----------------------------------------
@@ -219,6 +229,7 @@ async def chat(
             session.id,
             user_id=str(session.user_id),
             username=session.username,
+            first_name=user.first_name,
             cohort_id=session.cohort_id,
         )
 
@@ -303,6 +314,14 @@ async def chat_stream(
             streamed_chunks: list[str] = []
 
             try:
+                user = await db_service.get_user(session.user_id)
+
+                if user is None:
+                    raise HTTPException(
+                        status_code=404,
+                        detail="User not found",
+                    )
+
                 model_name = agent.llm_service.get_llm().get_name()
                 with llm_stream_duration_seconds.labels(model=model_name).time():
                     async for chunk in agent.get_stream_response(
@@ -310,6 +329,7 @@ async def chat_stream(
                         session.id,
                         user_id=str(session.user_id),
                         username=session.username,
+                        first_name=user.first_name,
                         cohort_id=session.cohort_id,
                     ):
                         streamed_chunks.append(chunk)
