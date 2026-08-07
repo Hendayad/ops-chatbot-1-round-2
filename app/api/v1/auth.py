@@ -50,6 +50,8 @@ router = APIRouter()
 security = HTTPBearer()
 db_service = database_service  # shared singleton -- do not construct a new pool here
 
+NO_COHORT_ID = "no-cohort"
+
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
@@ -224,7 +226,10 @@ async def register_user(request: Request, user_data: UserCreate):
 
         # Check if user exists
         if await db_service.get_user_by_email(sanitized_email):
-            raise HTTPException(status_code=400, detail="Email already registered")
+            raise HTTPException(
+                status_code=400,
+                detail="Email already registered",
+            )
 
         # Sanitize learner identity fields
         sanitized_username = (
@@ -232,6 +237,7 @@ async def register_user(request: Request, user_data: UserCreate):
             if user_data.username
             else None
         )
+
         first_name = sanitize_string(user_data.first_name)
         last_name = sanitize_string(user_data.last_name)
 
@@ -241,27 +247,47 @@ async def register_user(request: Request, user_data: UserCreate):
                 detail="First name and last name are required",
             )
 
-        # Resolve the submitted cohort through the shared configuration.
-        # get() normalizes the ID and returns only enabled cohorts.
-        cohort = cohort_config.get(user_data.cohort_id)
-        if cohort is None:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid or unavailable cohort",
-            )
+        # -----------------------------
+        # Cohort validation goes HERE
+        # -----------------------------
 
-        # Public registration always creates a normal learner.
-        # The request cannot choose role or is_ops.
+        NO_COHORT_ID = "no-cohort"
+
+        available_cohorts = cohort_config.list_cohorts()
+
+        if user_data.cohort_id == NO_COHORT_ID:
+            if available_cohorts:
+                raise HTTPException(
+                    status_code=400,
+                    detail="A cohort must be selected",
+                )
+
+            cohort_id = NO_COHORT_ID
+
+        else:
+            cohort = cohort_config.get(user_data.cohort_id)
+
+            if cohort is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid or unavailable cohort",
+                )
+
+            cohort_id = cohort.cohort_id
+
+        # -----------------------------
+        # Create user after validation
+        # -----------------------------
+
         user = await db_service.create_user(
             email=sanitized_email,
             password=User.hash_password(password),
             username=sanitized_username,
             first_name=first_name.strip(),
             last_name=last_name.strip(),
-            cohort_id=cohort.cohort_id,
+            cohort_id=cohort_id,
         )
 
-        # Create access token
         token = create_access_token(str(user.id))
 
         return UserResponse(
@@ -273,6 +299,7 @@ async def register_user(request: Request, user_data: UserCreate):
             cohort_id=user.cohort_id.strip().lower(),
             token=token,
         )
+
     except ValueError as ve:
         logger.exception("user_registration_validation_failed", error=str(ve))
         raise HTTPException(status_code=422, detail=str(ve))
