@@ -73,6 +73,7 @@ async def update_user_role(
 
 
     new_role = data.get("role", "").strip().lower()
+    new_cohort = data.get("cohort")
 
 
     # Validate role dynamically from enum
@@ -166,8 +167,18 @@ async def update_user_role(
 
         # Apply change
 
+        # Apply role
         user.role = requested_role
 
+        # Update cohort
+        if requested_role in (
+            UserRole.ADMIN,
+            UserRole.PROGRAM_LEAD,
+        ):
+            # Staff do not belong to cohorts
+            user.cohort_id = None
+        else:
+            user.cohort_id = new_cohort
 
         # Keep is_ops synchronized
         user.is_ops = (
@@ -187,6 +198,7 @@ async def update_user_role(
             "message": "Role updated successfully",
             "user_id": user.id,
             "new_role": user.role.value,
+            "cohort_id": user.cohort_id,
         }
 
 

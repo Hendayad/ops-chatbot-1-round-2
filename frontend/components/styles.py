@@ -475,3 +475,7 @@ def status_kind(value: str) -> str:
 def role_badge_html(role: str) -> str:
     label = (role or "guest").replace("_", " ").title()
     return badge(label, ROLE_BADGE.get((role or "").lower(), "neutral"))
+    
+def cohort_badge_html(cohort: str) -> str:
+    label = cohort or "Unassigned"
+    return badge(label, "info")

@@ -1,161 +1,15 @@
-import streamlit as st
 import requests
+import streamlit as st
 
-from components.styles import page_header, role_badge_html
 from api.config import BASE_URL
+from api.cohorts import get_cohorts
+from components.styles import (
+    page_header,
+    role_badge_html,
+    cohort_badge_html,
+)
 
 ROLE_OPTIONS = ["LEARNER", "ADMIN", "PROGRAM_LEAD"]
-COHORT_OPTIONS = ["Unassigned", "Group A", "Group B", "Group C", "Group D"]
-
-
-def _index_or_zero(options, value):
-    return options.index(value) if value in options else 0
-
-
-def show_users():
-
-    page_header(
-        "👥",
-        "User Management",
-        subtitle="View learners and staff.",
-        eyebrow="Program Lead",
-    )
-
-    try:
-        with st.spinner("Loading users..."):
-            response = requests.get(
-                f"{BASE_URL}/users",
-                headers={
-                    "Authorization": f"Bearer {st.session_state.token}"
-                },
-            )
-    except requests.RequestException as e:
-        st.error(f"Couldn't reach the backend: {e}")
-        return
-
-    if response.status_code != 200:
-        st.error("Unauthorized")
-        return
-
-    users = response.json()
-
-    if not users:
-        st.info("No users found.")
-        return
-
-    for user in users:
-
-        is_program_lead = user["role"] == "program_lead"
-
-        with st.container(border=True):
-
-            info_col, role_col, cohort_col, action_col = st.columns(
-                [2.8, 1.8, 1.8, 1]
-            )
-
-            with info_col:
-                st.write(f"**{user['email']}**")
-                st.markdown(
-                    role_badge_html(user["role"]),
-                    unsafe_allow_html=True,
-                )
-
-            with role_col:
-                new_role = st.selectbox(
-                    "Role",
-                    ROLE_OPTIONS,
-                    index=_index_or_zero(
-                        ROLE_OPTIONS,
-                        user["role"].upper(),
-                    ),
-                    key=f"role_{user['id']}",
-                    disabled=is_program_lead,
-                )
-
-            is_learner_selected = (not is_program_lead) and new_role == "LEARNER"
-
-            with cohort_col:
-                if is_learner_selected:
-                    new_cohort = st.selectbox(
-                        "Cohort",
-                        COHORT_OPTIONS,
-                        index=_index_or_zero(
-                            COHORT_OPTIONS,
-                            user.get("cohort"),
-                        ),
-                        key=f"cohort_{user['id']}",
-                    )
-                else:
-                    st.markdown("**Cohort**")
-                    st.caption("—")
-                    new_cohort = None
-
-            with action_col:
-
-                st.write("")
-
-                if is_program_lead:
-                    st.button(
-                        "Update",
-                        key=f"btn_{user['id']}",
-                        disabled=True,
-                        use_container_width=True,
-                    )
-
-                else:
-
-                    current_cohort = user.get("cohort") or "Unassigned"
-
-                    unchanged = (
-                        new_role.lower() == user["role"]
-                        and (new_cohort or "Unassigned") == current_cohort
-                    )
-
-                    if st.button(
-                        "Update",
-                        key=f"btn_{user['id']}",
-                        disabled=unchanged,
-                        use_container_width=True,
-                    ):
-
-                        payload = {
-                            "role": new_role.lower(),
-                            "cohort": new_cohort if is_learner_selected else None,
-                        }
-
-                        try:
-                            with st.spinner("Updating user..."):
-
-                                patch_response = requests.patch(
-                                    f"{BASE_URL}/users/{user['id']}/role",
-                                    json=payload,
-                                    headers={
-                                        "Authorization": f"Bearer {st.session_state.token}"
-                                    },
-                                )
-
-                            if patch_response.status_code == 200:
-                                st.success(f"Updated {user['email']}.")
-                                st.rerun()
-
-                            else:
-                                st.error("Couldn't update this user. Please try again.")
-
-                        except requests.RequestException as e:
-                            st.error(f"Couldn't reach the backend: {e}")
-import streamlit as st
-import requests
-
-from components.styles import page_header, role_badge_html
-
-from api.config import BASE_URL
-
-ROLE_OPTIONS = ["LEARNER", "ADMIN","PROGRAM_LEAD"]
-
-# No endpoint currently returns the list of valid groups/projects, so these
-# are placeholder options — swap in a real fetch once one exists.
-GROUP_OPTIONS = ["Unassigned", "Group A", "Group B", "Group C", "Group D"]
-PROJECT_OPTIONS = ["Unassigned", "CodeBook", "OpsAgent AI", "Capstone Project"]
 
 
 def _index_or_zero(options, value):
@@ -171,6 +25,9 @@ def show_users():
         eyebrow="Admin",
     )
 
+    # -----------------------------
+    # Load users
+    # -----------------------------
     try:
         with st.spinner("Loading users..."):
             response = requests.get(
@@ -193,79 +50,111 @@ def show_users():
         st.info("No users found.")
         return
 
+    # -----------------------------
+    # Load cohorts
+    # -----------------------------
+    try:
+        cohorts = get_cohorts(st.session_state.token)
+    except requests.RequestException as e:
+        st.error(f"Couldn't load cohorts: {e}")
+        return
+
+    # Display name -> id
+    cohort_map = {
+        cohort["name"]: cohort["cohort_id"]
+        for cohort in cohorts
+    }
+
+    # id -> display name
+    cohort_name_map = {
+        cohort["cohort_id"]: cohort["name"]
+        for cohort in cohorts
+    }
+
+    COHORT_OPTIONS = ["Unassigned"] + list(cohort_map.keys())
+
+    # -----------------------------
+    # Display users
+    # -----------------------------
     for user in users:
 
-        is_admin = user["role"] == "admin"
+        role = user["role"].lower()
+
+        is_staff = role in (
+            "admin",
+            "program_lead",
+        )
+
+        current_cohort_name = (
+            cohort_name_map.get(
+                user.get("cohort_id"),
+                "Unassigned",
+            )
+        )
 
         with st.container(border=True):
 
-            info_col, role_col, group_col, project_col, action_col = st.columns(
-                [2.4, 1.6, 1.6, 1.8, 1]
+            info_col, role_col, cohort_col, action_col = st.columns(
+                [2.8, 1.8, 1.8, 1]
             )
 
             # -----------------------------
             # User information
             # -----------------------------
             with info_col:
+
                 st.write(f"**{user['email']}**")
+
                 st.markdown(
                     role_badge_html(user["role"]),
                     unsafe_allow_html=True,
                 )
 
+                if not is_staff:
+                    st.markdown(
+                        cohort_badge_html(
+                            current_cohort_name
+                        ),
+                        unsafe_allow_html=True,
+                    )
+
             # -----------------------------
             # Role
             # -----------------------------
             with role_col:
+
                 new_role = st.selectbox(
                     "Role",
                     ROLE_OPTIONS,
                     index=_index_or_zero(
                         ROLE_OPTIONS,
-                        user["role"],
+                        user["role"].upper(),
                     ),
                     key=f"role_{user['id']}",
-                    disabled=is_admin,
+                    disabled=is_staff,
                 )
 
             # -----------------------------
-            # Group
+            # Cohort
             # -----------------------------
-            with group_col:
+            with cohort_col:
 
-                if is_admin:
-                    st.markdown("**Group**")
+                if is_staff:
+
+                    st.markdown("**Cohort**")
                     st.caption("—")
-                    new_group = None
-                else:
-                    new_group = st.selectbox(
-                        "Group",
-                        GROUP_OPTIONS,
-                        index=_index_or_zero(
-                            GROUP_OPTIONS,
-                            user.get("group"),
-                        ),
-                        key=f"group_{user['id']}",
-                    )
+                    new_cohort = None
 
-            # -----------------------------
-            # Project
-            # -----------------------------
-            with project_col:
-
-                if is_admin:
-                    st.markdown("**Project**")
-                    st.caption("—")
-                    new_project = None
                 else:
-                    new_project = st.selectbox(
-                        "Project",
-                        PROJECT_OPTIONS,
+
+                    new_cohort = st.selectbox(
+                        "Cohort",
+                        COHORT_OPTIONS,
                         index=_index_or_zero(
-                            PROJECT_OPTIONS,
-                            user.get("project"),
+                            COHORT_OPTIONS,
+                            current_cohort_name,
                         ),
-                        key=f"project_{user['id']}",
+                        key=f"cohort_{user['id']}",
                     )
 
             # -----------------------------
@@ -275,7 +164,8 @@ def show_users():
 
                 st.write("")
 
-                if is_admin:
+                if is_staff:
+
                     st.button(
                         "Update",
                         key=f"btn_{user['id']}",
@@ -286,9 +176,8 @@ def show_users():
                 else:
 
                     unchanged = (
-                        new_role == user["role"]
-                        and new_group == user.get("group", "Unassigned")
-                        and new_project == user.get("project", "Unassigned")
+                        new_role.lower() == role
+                        and new_cohort == current_cohort_name
                     )
 
                     if st.button(
@@ -299,12 +188,16 @@ def show_users():
                     ):
 
                         payload = {
-                            "role": new_role,
-                            "group": new_group,
-                            "project": new_project,
+                            "role": new_role.lower(),
+                            "cohort": (
+                                None
+                                if new_cohort == "Unassigned"
+                                else cohort_map[new_cohort]
+                            ),
                         }
 
                         try:
+
                             with st.spinner("Updating user..."):
 
                                 patch_response = requests.patch(
@@ -316,13 +209,25 @@ def show_users():
                                 )
 
                             if patch_response.status_code == 200:
-                                st.success(f"Updated {user['email']}.")
+
+                                st.success(
+                                    f"Updated {user['email']}."
+                                )
                                 st.rerun()
 
                             else:
+
+                                try:
+                                    error = patch_response.json()
+                                except Exception:
+                                    error = patch_response.text
+
                                 st.error(
-                                    "Couldn't update this user. Please try again."
+                                    f"Update failed: {error}"
                                 )
 
                         except requests.RequestException as e:
-                            st.error(f"Couldn't reach the backend: {e}")
+
+                            st.error(
+                                f"Couldn't reach the backend: {e}"
+                            )
