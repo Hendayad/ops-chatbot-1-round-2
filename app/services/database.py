@@ -106,6 +106,7 @@ class DatabaseService:
                 last_name=last_name.strip(),
                 preferred_name=first_name.strip(),
                 cohort_id=cohort_id,
+                timezone="Africa/Cairo"
             )
             session.add(user)
             session.commit()
