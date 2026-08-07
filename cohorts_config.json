@@ -81,5 +81,36 @@
     "name": "Cohort D",
     "project": "AI system",
     "start_date": "2026-08-07"
+  },
+  "cohort-demo": {
+    "description": "Demo cohort for hamza/hend test accounts, mapped to Cohort A's approved materials.",
+    "enabled": true,
+    "end_date": null,
+    "materials": [
+      {
+        "source": "faqs/faq.md",
+        "title": "Cohort Demo FAQ",
+        "type": "faq"
+      },
+      {
+        "source": "schedules/schedule.md",
+        "title": "Cohort Demo Schedule",
+        "type": "schedule"
+      },
+      {
+        "source": "onboarding/getting-started.md",
+        "title": "Cohort Demo Getting Started",
+        "type": "onboarding"
+      },
+      {
+        "source": "docs/handbook.md",
+        "title": "Cohort Demo Learner Handbook",
+        "type": "program_doc"
+      }
+    ],
+    "materials_root": "materials/cohort-a",
+    "name": "Cohort Demo",
+    "project": null,
+    "start_date": null
   }
 }
