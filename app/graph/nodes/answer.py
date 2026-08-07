@@ -20,6 +20,7 @@ from typing import Any, Literal, cast
 from app.graph.state import SessionGraphState
 
 
+from langchain_core.exceptions import OutputParserException
 from langchain_core.messages import AIMessage
 from langchain_core.runnables.config import RunnableConfig
 from pydantic import (
@@ -317,7 +318,7 @@ async def generate_grounded_answer(
         response = (
             raw_response if isinstance(raw_response, GroundedAnswer) else GroundedAnswer.model_validate(raw_response)
         )
-    except ValidationError as exc:
+    except (ValidationError, OutputParserException) as exc:
         logger.warning(
             "grounded_answer_invalid_model_output",
             cohort=normalized_cohort,
