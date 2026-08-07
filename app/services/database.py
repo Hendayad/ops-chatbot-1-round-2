@@ -78,7 +78,15 @@ class DatabaseService:
             if settings.ENVIRONMENT != Environment.PRODUCTION:
                 raise
 
-    async def create_user(self, email: str, password: str, username: str | None = None) -> User:
+    async def create_user(
+        self, 
+        email: str, 
+        password: str, 
+        first_name: str,
+        last_name: str,
+        cohort_id: str,
+        username: str | None = None,
+    ) -> User:
         """Create a new user.
 
         Args:
@@ -90,11 +98,19 @@ class DatabaseService:
             User: The created user
         """
         with Session(self.engine) as session:
-            user = User(email=email, hashed_password=password, username=username)
+            user = User(
+                email=email,
+                hashed_password=password,
+                username=username,
+                first_name=first_name.strip(),
+                last_name=last_name.strip(),
+                preferred_name=first_name.strip(),
+                cohort_id=cohort_id,
+            )
             session.add(user)
             session.commit()
             session.refresh(user)
-            logger.info("user_created", email=email)
+            logger.info("user_created", user_id=user.id, email=email, cohort_id=cohort_id)
             return user
 
     async def get_user(self, user_id: int) -> Optional[User]:

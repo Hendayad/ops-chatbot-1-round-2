@@ -20,6 +20,7 @@ from fastapi.security import (
 )
 
 from app.core.config import settings
+from app.cohorts.config import cohort_config
 from app.core.limiter import limiter
 from app.core.logging import (
     bind_context,
@@ -28,6 +29,7 @@ from app.core.logging import (
 from app.models.session import Session
 from app.models.user import User
 from app.schemas.auth import (
+    PublicCohort,
     SessionResponse,
     TokenResponse,
     UserCreate,
@@ -46,7 +48,6 @@ from app.utils.sanitization import (
 
 router = APIRouter()
 security = HTTPBearer()
-db_service = database_service
 db_service = database_service  # shared singleton -- do not construct a new pool here
 
 
@@ -182,6 +183,25 @@ async def get_current_session(
         )
 
 
+@router.get("/cohorts", response_model=list[PublicCohort])
+@limiter.limit(settings.RATE_LIMIT_ENDPOINTS["register"][0])
+async def list_registration_cohorts(request: Request) -> list[PublicCohort]:
+    """Return enabled cohorts that may be selected during registration."""
+    cohorts: list[PublicCohort] = []
+
+    for cohort_id in cohort_config.list_cohorts():
+        definition = cohort_config.get(cohort_id)
+        if definition is not None:
+            cohorts.append(
+                PublicCohort(
+                    cohort_id=definition.cohort_id,
+                    name=definition.name,
+                )
+            )
+
+    return cohorts
+
+
 @router.post("/register", response_model=UserResponse)
 @limiter.limit(settings.RATE_LIMIT_ENDPOINTS["register"][0])
 async def register_user(request: Request, user_data: UserCreate):
@@ -206,20 +226,53 @@ async def register_user(request: Request, user_data: UserCreate):
         if await db_service.get_user_by_email(sanitized_email):
             raise HTTPException(status_code=400, detail="Email already registered")
 
-        # Sanitize optional username
-        sanitized_username = sanitize_string(user_data.username) if user_data.username else None
+        # Sanitize learner identity fields
+        sanitized_username = (
+            sanitize_string(user_data.username)
+            if user_data.username
+            else None
+        )
+        first_name = sanitize_string(user_data.first_name)
+        last_name = sanitize_string(user_data.last_name)
 
-        # Create user
+        if not first_name or not last_name:
+            raise HTTPException(
+                status_code=422,
+                detail="First name and last name are required",
+            )
+
+        # Resolve the submitted cohort through the shared configuration.
+        # get() normalizes the ID and returns only enabled cohorts.
+        cohort = cohort_config.get(user_data.cohort_id)
+        if cohort is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid or unavailable cohort",
+            )
+
+        # Public registration always creates a normal learner.
+        # The request cannot choose role or is_ops.
         user = await db_service.create_user(
             email=sanitized_email,
             password=User.hash_password(password),
             username=sanitized_username,
+            first_name=first_name.strip(),
+            last_name=last_name.strip(),
+            cohort_id=cohort.cohort_id,
         )
 
         # Create access token
         token = create_access_token(str(user.id))
 
-        return UserResponse(id=user.id, email=user.email, username=user.username, token=token)
+        return UserResponse(
+            id=user.id,
+            email=user.email,
+            username=user.username,
+            first_name=user.first_name,
+            last_name=user.last_name,
+            cohort_id=user.cohort_id.strip().lower(),
+            token=token,
+        )
     except ValueError as ve:
         logger.exception("user_registration_validation_failed", error=str(ve))
         raise HTTPException(status_code=422, detail=str(ve))

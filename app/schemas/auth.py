@@ -15,13 +15,7 @@ from app.schemas.base import BaseResponse
 
 
 class Token(BaseModel):
-    """Token model for authentication.
-
-    Attributes:
-        access_token: The JWT access token.
-        token_type: The type of token (always "bearer").
-        expires_at: The token expiration timestamp.
-    """
+    """Token model for authentication."""
 
     access_token: str = Field(..., description="The JWT access token")
     token_type: str = Field(default="bearer", description="The type of token")
@@ -29,13 +23,7 @@ class Token(BaseModel):
 
 
 class TokenResponse(BaseResponse):
-    """Response model for login endpoint.
-
-    Attributes:
-        access_token: The JWT access token
-        token_type: The type of token (always "bearer")
-        expires_at: When the token expires
-    """
+    """Response model for login endpoint."""
 
     access_token: str = Field(..., description="The JWT access token")
     token_type: str = Field(default="bearer", description="The type of token")
@@ -43,48 +31,64 @@ class TokenResponse(BaseResponse):
     role: str
 
 
+class PublicCohort(BaseModel):
+    """Safe cohort information exposed before authentication."""
+
+    cohort_id: str = Field(..., description="Stable cohort identifier")
+    name: str = Field(..., description="Human-readable cohort name")
+
+
 class UserCreate(BaseModel):
-    """Request model for user registration.
+    """Request model for learner registration."""
 
-    Attributes:
-        email: User's email address
-        password: User's password
-        username: Optional display name
-    """
-
+    first_name: str = Field(..., min_length=1, max_length=80)
+    last_name: str = Field(..., min_length=1, max_length=80)
     email: EmailStr = Field(..., description="User's email address")
-    password: SecretStr = Field(..., description="User's password", min_length=8, max_length=64)
-    username: str | None = Field(default=None, description="Optional display name", max_length=50)
+    password: SecretStr = Field(
+        ...,
+        description="User's password",
+        min_length=8,
+        max_length=64,
+    )
+    username: str | None = Field(
+        default=None,
+        description="Optional username",
+        max_length=50,
+    )
+    cohort_id: str = Field(..., min_length=1, max_length=100)
+
+    @field_validator("first_name", "last_name", "cohort_id")
+    @classmethod
+    def strip_required_text(cls, value: str) -> str:
+        """Trim required text fields and reject whitespace-only values."""
+        value = value.strip()
+        if not value:
+            raise ValueError("Field cannot be blank")
+        return value
+
+    @field_validator("username")
+    @classmethod
+    def strip_optional_username(cls, value: str | None) -> str | None:
+        """Trim optional username and convert blank input to None."""
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
 
     @field_validator("password")
     @classmethod
     def validate_password(cls, v: SecretStr) -> SecretStr:
-        """Validate password strength.
-
-        Args:
-            v: The password to validate
-
-        Returns:
-            SecretStr: The validated password
-
-        Raises:
-            ValueError: If the password is not strong enough
-        """
+        """Validate password strength."""
         password = v.get_secret_value()
 
-        # Check for common password requirements
         if len(password) < 8:
             raise ValueError("Password must be at least 8 characters long")
-
         if not re.search(r"[A-Z]", password):
             raise ValueError("Password must contain at least one uppercase letter")
-
         if not re.search(r"[a-z]", password):
             raise ValueError("Password must contain at least one lowercase letter")
-
         if not re.search(r"[0-9]", password):
             raise ValueError("Password must contain at least one number")
-
         if not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
             raise ValueError("Password must contain at least one special character")
 
@@ -92,29 +96,19 @@ class UserCreate(BaseModel):
 
 
 class UserResponse(BaseResponse):
-    """Response model for user operations.
-
-    Attributes:
-        id: User's ID
-        email: User's email address
-        username: Optional display name
-        token: Authentication token
-    """
+    """Response model returned after successful registration."""
 
     id: int = Field(..., description="User's ID")
     email: str = Field(..., description="User's email address")
-    username: str | None = Field(default=None, description="Optional display name")
+    username: str | None = Field(default=None, description="Optional username")
+    first_name: str | None = Field(default=None, description="User's first name")
+    last_name: str | None = Field(default=None, description="User's last name")
+    cohort_id: str | None = Field(default=None, description="Assigned cohort")
     token: Token = Field(..., description="Authentication token")
 
 
 class SessionResponse(BaseResponse):
-    """Response model for session creation.
-
-    Attributes:
-        session_id: The unique identifier for the chat session
-        name: Name of the session (defaults to empty string)
-        token: The authentication token for the session
-    """
+    """Response model for session creation."""
 
     session_id: str = Field(..., description="The unique identifier for the chat session")
     name: str = Field(default="", description="Name of the session", max_length=100)
@@ -123,14 +117,6 @@ class SessionResponse(BaseResponse):
     @field_validator("name")
     @classmethod
     def sanitize_name(cls, v: str) -> str:
-        """Sanitize the session name.
-
-        Args:
-            v: The name to sanitize
-
-        Returns:
-            str: The sanitized name
-        """
-        # Remove any potentially harmful characters
+        """Sanitize the session name."""
         sanitized = re.sub(r'[<>{}[\]()\'"`]', "", v)
         return sanitized
