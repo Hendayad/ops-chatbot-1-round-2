@@ -81,19 +81,25 @@ def show_tickets():
         grid_response = AgGrid(
             display,
             gridOptions=gb.build(),
-            update_mode=GridUpdateMode.SELECTION_CHANGED,
+            update_mode=GridUpdateMode.MODEL_CHANGED
+    |       GridUpdateMode.SELECTION_CHANGED,
             fit_columns_on_grid_load=True,
             height=350,
             theme="streamlit",
             reload_data=False,
         )
 
-        # streamlit-aggrid returns None (not []) for selected_rows on some
-        # versions before any row has been clicked — guard against that
-        # before calling len() on it.
-        selected = grid_response["selected_rows"]
+        selected = grid_response.get("selected_rows")
+
+        if selected is None:
+            selected = grid_response.get("selected_data")
+
         if selected is None:
             selected = []
+
+        # If selected_data is a DataFrame, convert it to a list of dictionaries.
+        if isinstance(selected, pd.DataFrame):
+            selected = selected.to_dict("records")
 
         if len(selected) == 0:
             st.info("Select a ticket from the table above.")
