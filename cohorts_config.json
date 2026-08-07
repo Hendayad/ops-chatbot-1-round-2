@@ -60,5 +60,26 @@
     "name": "Cohort B",
     "project": null,
     "start_date": null
+  },
+  "cohort-d": {
+    "description": "This is a new cohort with letter 'D'",
+    "enabled": true,
+    "end_date": "2026-08-31",
+    "materials": [
+      {
+        "source": "ai_track_rules.txt",
+        "title": "AI Track rules",
+        "type": "program_doc"
+      },
+      {
+        "source": "ai_operations_support_agent_project_description.txt",
+        "title": "Agent Project",
+        "type": "program_doc"
+      }
+    ],
+    "materials_root": "materials/cohort-d",
+    "name": "Cohort D",
+    "project": "AI system",
+    "start_date": "2026-08-07"
   }
 }
