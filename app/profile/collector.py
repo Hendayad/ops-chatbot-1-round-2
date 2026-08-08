@@ -22,6 +22,14 @@ _PROMPTS = {
     ProfileField.PREFERRED_NAME: (
         "Before we continue, what name would you like us to use?"
     ),
+    # This entry was missing, which meant the collector crashed with a
+    # KeyError the moment a learner answered the preferred-name question --
+    # TIMEZONE is the very next field in ProfileField's declared order, so
+    # every real in-chat collection flow hit this on message two.
+    ProfileField.TIMEZONE: (
+        "What's your timezone? Please use an IANA name, "
+        "like Africa/Cairo or America/New_York."
+    ),
     ProfileField.COHORT: (
         "Which program cohort are you in?"
     ),
@@ -75,6 +83,7 @@ class PostgresProfileRepository:
                 return LearnerProfile()
             return LearnerProfile(
                 preferred_name=record.preferred_name,
+                timezone=record.timezone,
                 cohort=record.cohort,
             )
 
@@ -89,11 +98,13 @@ class PostgresProfileRepository:
                 record = LearnerProfileRecord(
                     user_id=str(user_id),
                     preferred_name=profile.preferred_name,
+                    timezone=profile.timezone,
                     cohort=profile.cohort,
                 )
                 session.add(record)
             else:
                 record.preferred_name = profile.preferred_name
+                record.timezone = profile.timezone
                 record.cohort = profile.cohort
                 session.add(record)
             session.commit()
