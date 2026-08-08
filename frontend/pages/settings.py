@@ -87,10 +87,14 @@ def show_settings():
             except Exception:
                 team_info = None
 
-            if not team_info or not team_info.get("cohort"):
+            # NOTE: the backend (`GET /users/me/teammates`) returns the key
+            # "cohort_id", not "cohort" -- this used to check "cohort" and
+            # so always fell through to "not assigned yet" even for learners
+            # with a real cohort_id set on their account.
+            if not team_info or not team_info.get("cohort_id"):
                 st.info("You haven't been assigned to a group yet.")
             else:
-                st.markdown(f"**Group:** {team_info['cohort']}")
+                st.markdown(f"**Group:** {team_info['cohort_id']}")
 
                 teammates = team_info.get("teammates", [])
 
