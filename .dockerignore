@@ -46,9 +46,10 @@ Dockerfile
 docker-compose.yml
 
 # Documentation
-docs/
+docs/*
 README.md
 *.md
+!docs/admin-guide.md
 
 # Build artifacts
 *.pyc
