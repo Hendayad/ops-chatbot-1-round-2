@@ -2,9 +2,19 @@
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from app.jobs.atrisk_job import run_scheduled_at_risk_job
-from app.jobs.reminder_job import run as run_reminder_job
 from app.core.logging import logger
+
+from app.jobs.atrisk_job import (
+    run_scheduled_at_risk_job,
+)
+
+from app.jobs.reminder_job import (
+    run as run_reminder_job,
+)
+
+from app.jobs.overdue_ticket_notification_job import (
+    run as run_overdue_ticket_notification_job,
+)
 
 
 scheduler = BackgroundScheduler()
@@ -12,6 +22,11 @@ scheduler = BackgroundScheduler()
 
 def start_scheduler() -> None:
     """Start background scheduled jobs."""
+
+    # ========================================================
+    # Reminder job
+    # ========================================================
+
     scheduler.add_job(
         run_reminder_job,
         trigger="interval",
@@ -20,13 +35,10 @@ def start_scheduler() -> None:
         replace_existing=True,
     )
 
-    # Idempotent per UTC calendar day (see app.jobs.atrisk_job's module
-    # docstring), so an interval trigger is safe even though this
-    # conceptually runs "daily" -- re-firing within the same day just
-    # re-evaluates and upserts the same day's state instead of duplicating
-    # it. Runs against whatever app.atrisk.progress_store currently holds,
-    # which is empty (and therefore a no-op) until something real ingests
-    # progress data -- see that module's docstring.
+    # ========================================================
+    # At-risk job
+    # ========================================================
+
     scheduler.add_job(
         run_scheduled_at_risk_job,
         trigger="interval",
@@ -35,6 +47,22 @@ def start_scheduler() -> None:
         replace_existing=True,
     )
 
+    # ========================================================
+    # Overdue escalation notification job
+    # ========================================================
+
+    scheduler.add_job(
+        run_overdue_ticket_notification_job,
+        trigger="interval",
+        minutes=5,
+        id="overdue_ticket_notification_job",
+        replace_existing=True,
+    )
+
+    # ========================================================
+    # Start scheduler
+    # ========================================================
+
     scheduler.start()
 
     logger.info("scheduler_started")
@@ -42,6 +70,7 @@ def start_scheduler() -> None:
 
 def stop_scheduler() -> None:
     """Stop background scheduler."""
+
     if scheduler.running:
         scheduler.shutdown()
 

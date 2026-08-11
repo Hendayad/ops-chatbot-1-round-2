@@ -1,7 +1,6 @@
 import requests
 import streamlit as st
 
-from api.config import BASE_URL
 from api.cohorts import get_cohorts
 from components.styles import (
     page_header,
@@ -9,11 +8,27 @@ from components.styles import (
     cohort_badge_html,
 )
 
-ROLE_OPTIONS = ["LEARNER", "ADMIN", "PROGRAM_LEAD"]
 
+ROLE_OPTIONS = ["LEARNER", "ADMIN", "PROGRAM_LEAD"]
 
 def _index_or_zero(options, value):
     return options.index(value) if value in options else 0
+
+
+def _get_user_name(user):
+    """
+    Build the user's display name from first_name and last_name.
+    """
+    first_name = (user.get("first_name") or "").strip()
+    last_name = (user.get("last_name") or "").strip()
+
+    full_name = f"{first_name} {last_name}".strip()
+
+    if full_name:
+        return full_name
+
+    # Fallback if first/last name are missing
+    return user.get("username", "Unknown User")
 
 
 def show_users():
@@ -36,12 +51,16 @@ def show_users():
                     "Authorization": f"Bearer {st.session_state.token}"
                 },
             )
+
     except requests.RequestException as e:
         st.error(f"Couldn't reach the backend: {e}")
         return
 
     if response.status_code != 200:
-        st.error("Unauthorized")
+        st.error(
+            f"Couldn't load users. "
+            f"Status code: {response.status_code}"
+        )
         return
 
     users = response.json()
@@ -55,17 +74,22 @@ def show_users():
     # -----------------------------
     try:
         cohorts = get_cohorts(st.session_state.token)
+
     except requests.RequestException as e:
         st.error(f"Couldn't load cohorts: {e}")
         return
 
-    # Display name -> id
+    # -----------------------------
+    # Cohort mappings
+    # -----------------------------
+
+    # Display name -> ID
     cohort_map = {
         cohort["name"]: cohort["cohort_id"]
         for cohort in cohorts
     }
 
-    # id -> display name
+    # ID -> display name
     cohort_name_map = {
         cohort["cohort_id"]: cohort["name"]
         for cohort in cohorts
@@ -85,11 +109,17 @@ def show_users():
             "program_lead",
         )
 
-        current_cohort_name = (
-            cohort_name_map.get(
-                user.get("cohort_id"),
-                "Unassigned",
-            )
+        # -----------------------------
+        # Get user's name
+        # -----------------------------
+        user_name = _get_user_name(user)
+
+        # -----------------------------
+        # Get current cohort
+        # -----------------------------
+        current_cohort_name = cohort_name_map.get(
+            user.get("cohort_id"),
+            "Unassigned",
         )
 
         with st.container(border=True):
@@ -103,14 +133,25 @@ def show_users():
             # -----------------------------
             with info_col:
 
-                st.write(f"**{user['email']}**")
+                # Name
+                st.markdown(
+                    f"**{user_name}**"
+                )
 
+                # Email
+                st.caption(
+                    user.get("email", "No email")
+                )
+
+                # Role badge
                 st.markdown(
                     role_badge_html(user["role"]),
                     unsafe_allow_html=True,
                 )
 
+                # Cohort badge
                 if not is_staff:
+
                     st.markdown(
                         cohort_badge_html(
                             current_cohort_name
@@ -143,6 +184,7 @@ def show_users():
 
                     st.markdown("**Cohort**")
                     st.caption("—")
+
                     new_cohort = None
 
                 else:
@@ -198,21 +240,27 @@ def show_users():
 
                         try:
 
-                            with st.spinner("Updating user..."):
+                            with st.spinner(
+                                "Updating user..."
+                            ):
 
                                 patch_response = requests.patch(
                                     f"{BASE_URL}/users/{user['id']}/role",
                                     json=payload,
                                     headers={
-                                        "Authorization": f"Bearer {st.session_state.token}"
+                                        "Authorization": (
+                                            f"Bearer "
+                                            f"{st.session_state.token}"
+                                        )
                                     },
                                 )
 
                             if patch_response.status_code == 200:
 
                                 st.success(
-                                    f"Updated {user['email']}."
+                                    f"Updated {user_name}."
                                 )
+
                                 st.rerun()
 
                             else:
@@ -231,3 +279,4 @@ def show_users():
                             st.error(
                                 f"Couldn't reach the backend: {e}"
                             )
+

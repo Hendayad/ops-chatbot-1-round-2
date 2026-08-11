@@ -1,7 +1,7 @@
 """Escalation trigger interface and default scaffold implementation."""
 
 from typing import Protocol
-from app.notifications.escalation_notifications import notify_learner_of_escalation, notify_ops_of_escalation
+from app.notifications.escalation_notifications import notify_learner_of_escalation
 from app.services.database import database_service as db_service_for_session
 from app.core.config import settings
 from app.core.logging import logger
@@ -49,25 +49,19 @@ class NoopEscalationTrigger:
         )
 
 
-escalation_trigger: EscalationTrigger = NoopEscalationTrigger()
-
-
 class DatabaseEscalationTrigger:
     """Escalation trigger that persists tickets in the application database."""
 
-    async def trigger(self, request: EscalationTriggerRequest) -> EscalationTriggerResult:
-        try:
-            from app.services.database import database_service
-        except ModuleNotFoundError:
-            logger.warning(
-                "database_escalation_trigger_dependency_missing",
-                source=request.source.value,
-                session_id=request.session_id,
-                user_id=request.user_id,
-            )
-            return await NoopEscalationTrigger().trigger(request)
+    async def trigger(
+        self,
+        request: EscalationTriggerRequest,
+    ) -> EscalationTriggerResult:
 
-        ticket = await database_service.create_escalation_ticket(
+        # ====================================================
+        # CREATE ESCALATION TICKET
+        # ====================================================
+
+        ticket = await db_service_for_session.create_escalation_ticket(
             source=request.source.value,
             reason=request.reason,
             status=request.ticket.status.value,
@@ -85,18 +79,42 @@ class DatabaseEscalationTrigger:
             user_id=request.user_id,
         )
 
+        # ====================================================
+        # LEARNER NOTIFICATION ONLY
+        # ====================================================
+
         try:
+
             with db_service_for_session.get_session_maker() as session:
-                notify_learner_of_escalation(session, ticket)
-                notify_ops_of_escalation(ticket, ops_email=settings.OPS_NOTIFICATION_EMAIL)
+
+                notify_learner_of_escalation(
+                    session,
+                    ticket,
+                )
+
         except Exception:
-            logger.exception("escalation_notification_failed", ticket_id=getattr(ticket, "id", None))
+
+            logger.exception(
+                "learner_escalation_notification_failed",
+                ticket_id=getattr(
+                    ticket,
+                    "id",
+                    None,
+                ),
+            )
+
+        # ====================================================
+        # RETURN
+        # ====================================================
 
         return EscalationTriggerResult(
             triggered=True,
             status=request.ticket.status,
             ticket_id=ticket.id,
-            message=f"Escalation stored successfully with ticket ID {ticket.id}.",
+            message=(
+                f"Escalation stored successfully "
+                f"with ticket ID {ticket.id}."
+            ),
         )
 
 

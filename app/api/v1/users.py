@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlmodel import select
 
 from app.models.user import User, UserRole
@@ -11,10 +12,18 @@ router = APIRouter()
 db_service = database_service
 
 
-# -----------------------------
+# ============================================================
+# Request schemas
+# ============================================================
+
+class PasswordUpdate(BaseModel):
+    password: str
+
+
+# ============================================================
 # Get all users
 # ADMIN + PROGRAM_LEAD
-# -----------------------------
+# ============================================================
 
 @router.get("/")
 async def get_users(
@@ -50,168 +59,14 @@ async def get_users(
         ]
 
 
-# -----------------------------
-# Change user role
-# ADMIN + PROGRAM_LEAD
-# -----------------------------
-
-@router.patch("/{user_id}/role")
-async def update_user_role(
-    user_id: int,
-    data: dict,
-    current_user: User = Depends(get_current_user),
-):
-
-    if current_user.role not in (
-        UserRole.ADMIN,
-        UserRole.PROGRAM_LEAD,
-    ):
-        raise HTTPException(
-            status_code=403,
-            detail="Admin or program lead access required",
-        )
-
-
-    new_role = data.get("role", "").strip().lower()
-    new_cohort = data.get("cohort")
-
-
-    # Validate role dynamically from enum
-    valid_roles = {
-        role.value.lower()
-        for role in UserRole
-    }
-
-    if new_role not in valid_roles:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid role",
-        )
-
-
-    with db_service.get_session_maker() as session:
-
-        user = session.get(User, user_id)
-
-        if not user:
-            raise HTTPException(
-                status_code=404,
-                detail="User not found",
-            )
-
-
-        requested_role = UserRole(new_role)
-
-
-        # -----------------------------------
-        # Prevent removing your own admin role
-        # -----------------------------------
-
-        losing_admin = (
-            user.role == UserRole.ADMIN
-            and requested_role != UserRole.ADMIN
-        )
-
-
-        if user.id == current_user.id and losing_admin:
-            raise HTTPException(
-                status_code=400,
-                detail="You cannot remove your own admin role.",
-            )
-
-
-        # -----------------------------------
-        # Prevent removing last admin
-        # -----------------------------------
-
-        if losing_admin:
-
-            admins = session.exec(
-                select(User)
-                .where(User.role == UserRole.ADMIN)
-            ).all()
-
-
-            if len(admins) == 1:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Cannot remove the last remaining admin.",
-                )
-
-
-        # -----------------------------------
-        # Program Lead restrictions
-        # -----------------------------------
-        # Program leads can manage users,
-        # but cannot promote someone to ADMIN
-        # or remove ADMIN privileges.
-
-        if current_user.role == UserRole.PROGRAM_LEAD:
-
-            if requested_role == UserRole.ADMIN:
-                raise HTTPException(
-                    status_code=403,
-                    detail="Program leads cannot assign admin roles.",
-                )
-
-
-            if (
-                user.role == UserRole.ADMIN
-                and requested_role != UserRole.ADMIN
-            ):
-                raise HTTPException(
-                    status_code=403,
-                    detail="Program leads cannot demote admins.",
-                )
-
-
-        # Apply change
-
-        # Apply role
-        user.role = requested_role
-
-        # Update cohort
-        if requested_role in (
-            UserRole.ADMIN,
-            UserRole.PROGRAM_LEAD,
-        ):
-            # Staff do not belong to cohorts
-            user.cohort_id = None
-        else:
-            user.cohort_id = new_cohort
-
-        # Keep is_ops synchronized
-        user.is_ops = (
-            user.role in (
-                UserRole.ADMIN,
-                UserRole.PROGRAM_LEAD,
-            )
-        )
-
-
-        session.add(user)
-        session.commit()
-        session.refresh(user)
-
-
-        return {
-            "message": "Role updated successfully",
-            "user_id": user.id,
-            "new_role": user.role.value,
-            "cohort_id": user.cohort_id,
-        }
-
-
-
-# -----------------------------
+# ============================================================
 # Current user profile
-# -----------------------------
+# ============================================================
 
 @router.get("/me")
 async def get_me(
     current_user: User = Depends(get_current_user),
 ):
-
     return {
         "id": current_user.id,
         "username": current_user.username,
@@ -224,24 +79,63 @@ async def get_me(
     }
 
 
-# -----------------------------
+# ============================================================
+# Create / change current user's password
+# ============================================================
+@router.patch("/me/password")
+async def update_my_password(
+    data: PasswordUpdate,
+    current_user: User = Depends(get_current_user),
+):
+    password = data.password.strip()
+
+    if not password:
+        raise HTTPException(
+            status_code=400,
+            detail="Password cannot be empty.",
+        )
+
+    if len(password) < 8:
+        raise HTTPException(
+            status_code=400,
+            detail="Password must be at least 8 characters long.",
+        )
+
+    new_password_hash = User.hash_password(password)
+
+    with db_service.get_session_maker() as session:
+        user = session.get(User, current_user.id)
+
+        if not user:
+            raise HTTPException(
+                status_code=404,
+                detail="User not found.",
+            )
+
+        user.hashed_password = new_password_hash
+
+        session.add(user)
+        session.commit()
+
+    return {
+        "message": "Password updated successfully.",
+    }
+
+
+# ============================================================
 # Current user's group / teammates
-# -----------------------------
+# ============================================================
 
 @router.get("/me/teammates")
 async def get_my_teammates(
     current_user: User = Depends(get_current_user),
 ):
-    """Return the current user's group (cohort) and the teammates in it.
-
-    Includes each teammate's email deliberately: learners are expected to be
-    able to contact their group directly (rendered on the Settings page). If
-    that changes, drop the field here rather than only hiding it in the UI.
-
-    A learner with no cohort assigned yet gets an empty teammate list rather
-    than an error, so the frontend can show "not assigned yet" instead of
-    crashing.
     """
+    Return the current user's group and teammates.
+
+    A learner without a cohort gets an empty teammate list.
+    """
+
     if not current_user.cohort_id:
         return {
             "cohort_id": None,
@@ -271,4 +165,149 @@ async def get_my_teammates(
                 }
                 for user in teammates
             ],
+        }
+
+
+# ============================================================
+# Change user role
+# ADMIN + PROGRAM_LEAD
+# ============================================================
+
+@router.patch("/{user_id}/role")
+async def update_user_role(
+    user_id: int,
+    data: dict,
+    current_user: User = Depends(get_current_user),
+):
+
+    if current_user.role not in (
+        UserRole.ADMIN,
+        UserRole.PROGRAM_LEAD,
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Admin or program lead access required",
+        )
+
+    new_role = data.get("role", "").strip().lower()
+    new_cohort = data.get("cohort")
+
+    # -----------------------------------
+    # Validate role
+    # -----------------------------------
+
+    valid_roles = {
+        role.value.lower()
+        for role in UserRole
+    }
+
+    if new_role not in valid_roles:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid role",
+        )
+
+    with db_service.get_session_maker() as session:
+
+        user = session.get(User, user_id)
+
+        if not user:
+            raise HTTPException(
+                status_code=404,
+                detail="User not found",
+            )
+
+        requested_role = UserRole(new_role)
+
+        # -----------------------------------
+        # Prevent removing your own admin role
+        # -----------------------------------
+
+        losing_admin = (
+            user.role == UserRole.ADMIN
+            and requested_role != UserRole.ADMIN
+        )
+
+        if user.id == current_user.id and losing_admin:
+            raise HTTPException(
+                status_code=400,
+                detail="You cannot remove your own admin role.",
+            )
+
+        # -----------------------------------
+        # Prevent removing last admin
+        # -----------------------------------
+
+        if losing_admin:
+
+            admins = session.exec(
+                select(User)
+                .where(User.role == UserRole.ADMIN)
+            ).all()
+
+            if len(admins) == 1:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Cannot remove the last remaining admin.",
+                )
+
+        # -----------------------------------
+        # Program Lead restrictions
+        # -----------------------------------
+
+        if current_user.role == UserRole.PROGRAM_LEAD:
+
+            if requested_role == UserRole.ADMIN:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Program leads cannot assign admin roles.",
+                )
+
+            if (
+                user.role == UserRole.ADMIN
+                and requested_role != UserRole.ADMIN
+            ):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Program leads cannot demote admins.",
+                )
+
+        # -----------------------------------
+        # Apply role
+        # -----------------------------------
+
+        user.role = requested_role
+
+        # -----------------------------------
+        # Update cohort
+        # -----------------------------------
+
+        if requested_role in (
+            UserRole.ADMIN,
+            UserRole.PROGRAM_LEAD,
+        ):
+            user.cohort_id = None
+        else:
+            user.cohort_id = new_cohort
+
+        # -----------------------------------
+        # Keep is_ops synchronized
+        # -----------------------------------
+
+        user.is_ops = (
+            user.role in (
+                UserRole.ADMIN,
+                UserRole.PROGRAM_LEAD,
+            )
+        )
+
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+
+        return {
+            "message": "Role updated successfully",
+            "user_id": user.id,
+            "new_role": user.role.value,
+            "cohort_id": user.cohort_id,
         }

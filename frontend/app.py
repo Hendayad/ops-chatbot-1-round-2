@@ -137,7 +137,7 @@ if st.session_state.token is None:
                             st.rerun()
 
                         except Exception as e:
-                            st.error(f"Login failed. {e}")
+                            st.error(f"Login failed. Incorrect email or password")
 
             st.write("")
 

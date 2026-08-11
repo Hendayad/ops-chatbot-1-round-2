@@ -123,3 +123,19 @@ def get_cohorts(token):
     response.raise_for_status()
 
     return response.json()["cohorts"]
+
+def update_password(token: str, password: str):
+    response = requests.patch(
+        f"{BASE_URL}/users/me/password",
+        json={
+            "password": password,
+        },
+        headers={
+            "Authorization": f"Bearer {token}",
+        },
+        timeout=10,
+    )
+
+    response.raise_for_status()
+
+    return response.json()
