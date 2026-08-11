@@ -52,6 +52,7 @@ from app.metrics.kpis import (
 from app.models.escalation_ticket import EscalationTicket
 from app.models.notification_preference import NotificationPreference
 from app.models.user import User
+from app.notifications.escalation_notifications import notify_learner_of_escalation
 from app.schemas.escalation import (
     ConversationSummary,
     EscalationSource,
