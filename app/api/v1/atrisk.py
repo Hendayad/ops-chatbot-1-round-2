@@ -107,18 +107,38 @@ async def get_atrisk_summary(
 async def get_atrisk_trend(
     request: Request,
     cohort_id: str = Query(..., description="Cohort to scope this trend to."),
-    days: int = Query(default=14, ge=1, le=90, description="Window size in days, ending today (UTC)."),
+    days: int = Query(
+        default=14, ge=1, le=90,
+        description="Window size in days, ending today (UTC). Ignored when start_date/end_date are both given.",
+    ),
+    start_date: date | None = Query(default=None, description="Explicit range start. Requires end_date."),
+    end_date: date | None = Query(default=None, description="Explicit range end. Requires start_date."),
     current_user: User = Depends(get_current_ops_user),
 ) -> AtRiskTrendResponse:
-    """Return one at-risk aggregate per day for the trailing `days` days, for one cohort.
+    """Return one at-risk aggregate per day for a date range, for one cohort.
 
-    Backs the Ops dashboard's trend chart. Gap days with no persisted state
-    are zero-filled by app.atrisk.state.get_aggregate_trend, so the chart
-    never has to special-case a missing day.
+    Backs the Ops dashboard's trend chart. Pass an explicit `start_date` +
+    `end_date` for a specific range, or omit both to fall back to the
+    trailing `days` days ending on the cohort's latest run date. Gap days
+    with no persisted state are zero-filled by
+    app.atrisk.state.get_aggregate_trend, so the chart never has to
+    special-case a missing day.
     """
     try:
-        end_date = get_latest_run_date(cohort_id=cohort_id) or date.today()
-        start_date = end_date - timedelta(days=days - 1)
+        if start_date and end_date:
+            if start_date > end_date:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="start_date must be on or before end_date.",
+                )
+            if (end_date - start_date).days > 90:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Date range cannot exceed 90 days.",
+                )
+        else:
+            end_date = get_latest_run_date(cohort_id=cohort_id) or date.today()
+            start_date = end_date - timedelta(days=days - 1)
         trend = get_aggregate_trend(start_date, end_date, cohort_id=cohort_id)
         logger.info(
             "ops_atrisk_trend_viewed",
@@ -126,9 +146,10 @@ async def get_atrisk_trend(
             cohort_id=cohort_id,
             start_date=str(start_date),
             end_date=str(end_date),
-            days=days,
         )
         return AtRiskTrendResponse(start_date=start_date, end_date=end_date, trend=trend)
+    except HTTPException:
+        raise
     except Exception as exc:
         _raise_http_error(exc, operation="trend")
 

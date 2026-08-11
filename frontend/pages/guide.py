@@ -18,11 +18,19 @@ def show_guide():
         eyebrow="Documentation",
     )
 
-    # Repository root
-    repo_root = Path(__file__).resolve().parents[2]
-
-    # docs/admin-guide.md
-    guide_path = repo_root / "docs" / "admin-guide.md"
+    # frontend/docs/admin-guide.md
+    #
+    # NOTE: this used to resolve to the repo-root docs/ folder (three levels
+    # up from this file), which works when running from a full repo checkout.
+    # But this service's Railway build Root Directory is set to /frontend,
+    # so only the frontend/ subtree is ever present in its build context --
+    # the repo-root docs/ folder never exists in this container, no matter
+    # what .dockerignore allows through. The guide now lives inside
+    # frontend/docs/ instead, so it's actually part of this service's build.
+    # Keep this copy in sync with the repo-root docs/admin-guide.md if that
+    # one is ever edited (or point everyone at this one as the source of truth).
+    frontend_root = Path(__file__).resolve().parents[1]
+    guide_path = frontend_root / "docs" / "admin-guide.md"
 
     if guide_path.exists():
 
