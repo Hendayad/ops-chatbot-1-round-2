@@ -399,7 +399,12 @@ async def remove_material(
     except MaterialNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     store = build_default_store()
-    store.retire_material(source)   # or the correct source_id
+    # retire_material() matches on the exact composite source_id
+    # ("{cohort}::{source}", see RawMaterial.source_id) that ingestion writes
+    # to knowledge_chunks -- passing the bare filename here never matches any
+    # row, so the old embedded chunks were silently left behind after a
+    # material was "removed".
+    store.retire_material(f"{cohort_id}::{source}")
 
     if delete_file:
     # Find the material type from the original cohort definition
