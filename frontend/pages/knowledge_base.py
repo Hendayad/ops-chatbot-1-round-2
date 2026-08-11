@@ -166,6 +166,21 @@ Chunks Written: **{stats.get('chunks_written', 0)}**
                 df["updated_at"]
             ).dt.strftime("%Y-%m-%d %H:%M")
 
+        # material_id is "{cohort}::{source}" (see RawMaterial.source_id), so
+        # the cohort a material belongs to can be read straight out of it --
+        # no separate backend field or API call needed for the filter below.
+        df["cohort"] = df["material_id"].str.split("::").str[0]
+
+        cohort_options = ["All cohorts"] + sorted(df["cohort"].dropna().unique().tolist())
+        selected_cohort_filter = st.selectbox(
+            "Filter by Cohort",
+            cohort_options,
+            key="kb_materials_cohort_filter",
+        )
+
+        if selected_cohort_filter != "All cohorts":
+            df = df[df["cohort"] == selected_cohort_filter]
+
         st.dataframe(
             df,
             use_container_width=True,
@@ -173,6 +188,10 @@ Chunks Written: **{stats.get('chunks_written', 0)}**
         )
 
         material_ids = df["material_id"].tolist()
+
+        if not material_ids:
+            st.info("No materials for this cohort.")
+            return
 
         st.divider()
 
