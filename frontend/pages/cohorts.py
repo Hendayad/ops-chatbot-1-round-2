@@ -62,8 +62,8 @@ def create_cohort_dialog():
             errors = []
             if not name.strip():
                 errors.append("Cohort Name is required.")
-            if end_date < start_date:
-                errors.append("End Date can't be before Start Date.")
+            if end_date <= start_date:
+                errors.append("End Date must be at least one day after Start Date.")
 
             if errors:
                 for message in errors:
