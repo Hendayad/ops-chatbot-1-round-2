@@ -18,6 +18,18 @@ db_service = database_service
 
 class PasswordUpdate(BaseModel):
     password: str
+class UserCreate(BaseModel):
+    email: str
+    username: str
+    first_name: str
+    last_name: str
+    password: str
+    role: str = "learner"
+    cohort_id: int | None = None
+
+
+class AdminPasswordReset(BaseModel):
+    password: str
 
 
 # ============================================================
@@ -57,6 +69,139 @@ async def get_users(
             }
             for user in users
         ]
+# ============================================================
+# Create a new user
+# ADMIN + PROGRAM_LEAD
+# ============================================================
+
+@router.post("/")
+async def create_user(
+    data: UserCreate,
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.role not in (
+        UserRole.ADMIN,
+        UserRole.PROGRAM_LEAD,
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Admin or program lead access required",
+        )
+
+    email = data.email.strip().lower()
+    username = data.username.strip()
+    password = data.password.strip()
+    new_role = data.role.strip().lower()
+
+    if not email or not username or not password:
+        raise HTTPException(
+            status_code=400,
+            detail="Email, username, and password are required.",
+        )
+
+    if len(password) < 8:
+        raise HTTPException(
+            status_code=400,
+            detail="Password must be at least 8 characters long.",
+        )
+
+    valid_roles = {role.value.lower() for role in UserRole}
+
+    if new_role not in valid_roles:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid role",
+        )
+
+    requested_role = UserRole(new_role)
+
+
+    with db_service.get_session_maker() as session:
+
+        existing = session.exec(
+            select(User).where(
+                (User.email == email) | (User.username == username)
+            )
+        ).first()
+
+        if existing:
+            raise HTTPException(
+                status_code=400,
+                detail="A user with that email or username already exists.",
+            )
+
+        is_staff = requested_role in (
+            UserRole.ADMIN,
+            UserRole.PROGRAM_LEAD,
+        )
+
+        user = User(
+            email=email,
+            username=username,
+            first_name=data.first_name.strip(),
+            last_name=data.last_name.strip(),
+            hashed_password=User.hash_password(password),
+            role=requested_role,
+            cohort_id=None if is_staff else data.cohort_id,
+            is_ops=is_staff,
+        )
+
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+
+        return {
+            "message": "User created successfully.",
+            "id": user.id,
+            "email": user.email,
+            "username": user.username,
+            "role": user.role.value,
+        }
+
+
+# ============================================================
+# Admin reset of another user's password
+# ADMIN + PROGRAM_LEAD
+# ============================================================
+
+@router.patch("/{user_id}/password")
+async def admin_reset_password(
+    user_id: int,
+    data: AdminPasswordReset,
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.role not in (
+        UserRole.ADMIN,
+        UserRole.PROGRAM_LEAD,
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Admin or program lead access required",
+        )
+
+    password = data.password.strip()
+
+    if len(password) < 8:
+        raise HTTPException(
+            status_code=400,
+            detail="Password must be at least 8 characters long.",
+        )
+
+    with db_service.get_session_maker() as session:
+        user = session.get(User, user_id)
+
+        if not user:
+            raise HTTPException(
+                status_code=404,
+                detail="User not found.",
+            )
+
+        user.hashed_password = User.hash_password(password)
+
+        session.add(user)
+        session.commit()
+
+    return {"message": "Password reset successfully."}
 
 
 # ============================================================
