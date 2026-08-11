@@ -411,12 +411,20 @@ class TicketService:
             # 1. Checks learner notification preferences.
             # 2. Prevents duplicate notifications.
             # 3. Creates feedback_followup notification.
+            #
+            # notify_learner_of_escalation() needs an actual
+            # SQLModel Session, not a session-maker -- open one
+            # from self._database (same pattern used by
+            # app.services.escalation.DatabaseEscalationTrigger)
+            # rather than calling a session getter that doesn't
+            # exist on this class.
             # ------------------------------------------------
 
-            notify_learner_of_escalation(
-                self._get_notification_session(),
-                ticket,
-            )
+            with self._database.get_session_maker() as session:
+                notify_learner_of_escalation(
+                    session,
+                    ticket,
+                )
 
             learner_ticket_notifications_total.labels(
                 outcome="success"
