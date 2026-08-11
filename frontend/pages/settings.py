@@ -62,16 +62,6 @@ def show_settings():
                 label_visibility="collapsed",
             )
 
-            st.markdown("**User ID**")
-
-            st.text_input(
-                "User ID",
-                value=str(user.get("id", "")),
-                disabled=True,
-                key="settings_user_id",
-                label_visibility="collapsed",
-            )
-
     # ============================================================
     # Password
     # ============================================================
