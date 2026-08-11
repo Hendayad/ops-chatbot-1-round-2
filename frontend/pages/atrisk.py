@@ -1,9 +1,12 @@
+from datetime import date, timedelta
+
 import streamlit as st
 import pandas as pd
 import requests
 import plotly.express as px
 
 from components.styles import badge
+from api.cohorts import get_cohorts
 
 from api.config import BASE_URL
 BLUE = "#2A63E4"
@@ -52,24 +55,44 @@ def render_atrisk_tab():
     """Renders the At-Risk Nudges dashboard content. Call from inside a tab."""
     st.caption("At-risk learners, why they're flagged, and how the count is trending.")
 
+    token = st.session_state.token
+
+    try:
+        cohorts = get_cohorts(token, include_disabled=True)
+    except requests.RequestException as e:
+        st.error(f"Couldn't load cohorts: {e}")
+        return
+
+    if not cohorts:
+        st.info("No cohorts configured yet.")
+        return
+
+    cohort_map = {cohort["name"]: cohort["cohort_id"] for cohort in cohorts}
+    cohort_names = list(cohort_map.keys())
+    default_index = next(
+        (i for i, cohort in enumerate(cohorts) if cohort["cohort_id"] == "cohort_demo"),
+        0,
+    )
+
     filt1, filt2, filt3 = st.columns([2, 1.3, 1.3])
 
     with filt1:
-        cohort_id = st.text_input("Cohort", value="cohort_demo", key="atrisk_cohort")
-    with filt2:
-        run_date = st.date_input("Run date", key="atrisk_run_date")
-    with filt3:
-        days = st.selectbox(
-            "Trend window", [7, 14, 30, 90], index=1,
-            format_func=lambda d: f"Last {d} days", key="atrisk_days",
+        cohort_name = st.selectbox(
+            "Cohort", cohort_names, index=default_index, key="atrisk_cohort"
         )
+        cohort_id = cohort_map[cohort_name]
+    with filt2:
+        from_date = st.date_input(
+            "From", value=date.today() - timedelta(days=13), key="atrisk_from_date"
+        )
+    with filt3:
+        to_date = st.date_input("To", value=date.today(), key="atrisk_to_date")
 
-    if not cohort_id.strip():
-        st.info("Enter a cohort ID above to load data.")
+    if from_date > to_date:
+        st.error("'From' date must be on or before 'To' date.")
         return
 
-    token = st.session_state.token
-    summary_params = {"cohort_id": cohort_id.strip(), "run_date": str(run_date)}
+    summary_params = {"cohort_id": cohort_id, "run_date": str(to_date)}
 
     try:
         with st.spinner("Loading at-risk summary..."):
@@ -152,7 +175,13 @@ def render_atrisk_tab():
         try:
             with st.spinner("Loading trend..."):
                 trend_resp = _get(
-                    "/trend", token, {"cohort_id": cohort_id.strip(), "days": days}
+                    "/trend",
+                    token,
+                    {
+                        "cohort_id": cohort_id,
+                        "start_date": str(from_date),
+                        "end_date": str(to_date),
+                    },
                 )
             trend = trend_resp.get("trend", [])
         except requests.RequestException as e:
