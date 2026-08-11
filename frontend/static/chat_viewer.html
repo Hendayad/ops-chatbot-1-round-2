@@ -614,7 +614,6 @@
           return (
             '<div class="session-item' + active + '" data-session-id="' + escapeHtml(s.session_id) + '">' +
             '<span class="s-name">' + name + '</span>' +
-            '<span class="s-id">' + escapeHtml(s.session_id) + '</span>' +
             '</div>'
           );
         }).join("");
@@ -672,7 +671,7 @@
         if (!session) return;
         state.activeSessionId = sessionId;
         state.activeSessionToken = session.token.access_token;
-        el.transcriptTitle.textContent = (session.name && session.name.trim()) ? session.name : sessionId;
+        el.transcriptTitle.textContent = (session.name && session.name.trim()) ? session.name : "Untitled session";
         el.refreshBtn.disabled = false;
         el.composerInput.disabled = false;
         el.composerSend.disabled = false;
