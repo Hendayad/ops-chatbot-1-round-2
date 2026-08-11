@@ -1,6 +1,7 @@
 import requests
 import streamlit as st
 
+from api.config import BASE_URL
 from api.cohorts import get_cohorts
 from components.styles import (
     page_header,
