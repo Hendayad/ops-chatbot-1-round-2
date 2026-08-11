@@ -1,6 +1,7 @@
 """App models package."""
 
 from app.models.base import BaseModel
+from app.models.cohort import Cohort, CohortMaterial
 from app.models.escalation_ticket import EscalationTicket
 from app.models.notification import NotificationRecord
 from app.models.notification_preference import NotificationPreference
@@ -12,6 +13,8 @@ from app.models.user import User
 
 __all__ = [
     "BaseModel",
+    "Cohort",
+    "CohortMaterial",
     "EscalationTicket",
     "LearnerProfileRecord",
     "NotificationRecord",
