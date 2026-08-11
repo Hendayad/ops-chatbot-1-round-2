@@ -26,7 +26,8 @@ def show_knowledge_base():
         # ==========================================================
         st.subheader("Load a Cohort")
         st.caption(
-            "Select a configured cohort and load its approved materials into the knowledge base."
+            "Pick a cohort and its approved materials are loaded into the "
+            "knowledge base automatically."
         )
 
         cohorts_response = get_cohorts(st.session_state.token)
@@ -36,35 +37,32 @@ def show_knowledge_base():
 
             cohort_ids = [c["cohort_id"] for c in cohorts]
 
-            col1, col2 = st.columns([4, 1])
+            selected_cohort = st.selectbox(
+                "Configured Cohorts",
+                cohort_ids,
+            )
 
-            with col1:
-                selected_cohort = st.selectbox(
-                    "Configured Cohorts",
-                    cohort_ids,
-                )
-
-            with col2:
-                st.write("")
-                st.write("")
-
-                if st.button(
-                    "Load",
-                    use_container_width=True,
-                ):
-                    with st.spinner("Loading cohort materials..."):
-                        stats = onboard_cohort(
-                            st.session_state.token,
-                            selected_cohort,
-                        )
-
-                    st.success(
-                        f"Successfully loaded '{selected_cohort}'."
+            # Loading a cohort ingests its files and writes embeddings -- a
+            # real, non-trivial backend action, not just a display filter.
+            # To still give the "pick it and it's loaded" feel the mentor
+            # asked for (no separate button), we auto-trigger the load, but
+            # guard it against Streamlit's frequent reruns by only firing
+            # when the selected cohort actually differs from the last one
+            # we loaded -- so switching pages or interacting with other
+            # widgets on this page never re-ingests the same cohort again.
+            if selected_cohort != st.session_state.get("kb_last_loaded_cohort"):
+                with st.spinner(f"Loading materials for '{selected_cohort}'..."):
+                    stats = onboard_cohort(
+                        st.session_state.token,
+                        selected_cohort,
                     )
+                st.session_state["kb_last_loaded_cohort"] = selected_cohort
 
-                    if isinstance(stats, dict):
-                        st.info(
-                            f"""
+                st.success(f"Loaded '{selected_cohort}'.")
+
+                if isinstance(stats, dict):
+                    st.info(
+                        f"""
 Sources Seen: **{stats.get('sources_seen', 0)}**
 
 Sources Ingested: **{stats.get('sources_ingested', 0)}**
@@ -73,9 +71,7 @@ Sources Skipped: **{stats.get('sources_skipped', 0)}**
 
 Chunks Written: **{stats.get('chunks_written', 0)}**
 """
-                        )
-
-                    st.rerun()
+                    )
 
         else:
             st.warning("No cohorts are configured.")
