@@ -53,15 +53,3 @@ def onboard_cohort(token, cohort_id):
     )
     response.raise_for_status()
     return response.json()
-
-
-def reingest_materials(token, materials):
-    """materials: list[dict] matching the backend's RawMaterial schema."""
-    headers = {"Authorization": f"Bearer {token}"}
-    response = requests.post(
-        f"{BASE_URL}/kb/reingest",
-        headers=headers,
-        json=materials,
-    )
-    response.raise_for_status()
-    return response.json()
