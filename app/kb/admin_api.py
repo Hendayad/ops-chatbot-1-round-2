@@ -1,4 +1,4 @@
-"""Ops Console KB admin API — re-ingest, list, and retire knowledge base materials."""
+"""Ops Console KB admin API — onboard, list, and retire knowledge base materials."""
 
 import re
 from datetime import date
@@ -23,7 +23,7 @@ from app.ingestion.loader import load_materials
 from app.kb.schema import SourceType
 from app.kb.store import build_default_store
 from app.models.user import User
-from app.schemas.knowledge import IngestionStats, RawMaterial
+from app.schemas.knowledge import IngestionStats
 
 router = APIRouter()
 
@@ -36,39 +36,6 @@ TYPE_TO_DIR = {
     SourceType.ONBOARDING: "onboarding",
     SourceType.PROGRAM_DOC: "docs",
 }
-
-
-@router.post("/reingest", response_model=IngestionStats)
-@limiter.limit(settings.RATE_LIMIT_ENDPOINTS["kb_admin"][0])
-async def reingest_materials(
-    request: Request,
-    materials: list[RawMaterial],
-    user: User = Depends(get_current_user),
-):
-    """Re-ingest a batch of approved materials into the knowledge base."""
-    try:
-        store = build_default_store()
-        stats = store.ingest(materials)
-
-        logger.info(
-            "kb_reingest_completed",
-            user_id=user.id,
-            sources_seen=stats.sources_seen,
-        )
-
-        return stats
-
-    except Exception as e:
-        logger.exception(
-            "kb_reingest_failed",
-            user_id=user.id,
-            error=str(e),
-        )
-
-        raise HTTPException(
-            status_code=500,
-            detail=str(e),
-        )
 
 
 # ----------------------------------------------------------------------
@@ -296,10 +263,10 @@ async def upload_material(
 ):
     """Upload one material file for a cohort and register it in the config.
 
-    This only saves the file and records it in ``cohorts_config.json`` — it
-    does not embed/index the content. Run the existing
-    ``POST /cohorts/{cohort_id}/onboard`` (or ``/reingest``) afterwards to
-    pull it into the knowledge base.
+    This only saves the file and registers it in the cohort's materials
+    list — it does not embed/index the content. Run the existing
+    ``POST /cohorts/{cohort_id}/onboard`` afterwards to pull it into the
+    knowledge base.
     """
     definition = cohort_config.get_any(cohort_id)
     if definition is None:

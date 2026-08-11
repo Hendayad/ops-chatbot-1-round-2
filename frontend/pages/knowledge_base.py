@@ -1,5 +1,3 @@
-import json
-
 import streamlit as st
 import pandas as pd
 
@@ -9,7 +7,6 @@ from api.kb import (
     retire_material,
     get_cohorts,
     onboard_cohort,
-    reingest_materials,
     get_material,
 )
 
@@ -82,57 +79,6 @@ Chunks Written: **{stats.get('chunks_written', 0)}**
 
         else:
             st.warning("No cohorts are configured.")
-
-        st.divider()
-
-        # ==========================================================
-        # Re-ingest Materials (manual)
-        # ==========================================================
-        st.subheader("Re-ingest Materials")
-        st.caption(
-            "Paste a JSON list of approved materials to re-ingest them directly, "
-            "outside of a cohort's configured materials folder."
-        )
-
-        materials_json = st.text_area(
-            "Materials (JSON list)",
-            height=150,
-            placeholder='[{"source_id": "...", "content": "...", ...}]',
-        )
-
-        if st.button("Re-ingest"):
-            try:
-                parsed_materials = json.loads(materials_json) if materials_json.strip() else []
-            except json.JSONDecodeError as e:
-                st.error(f"Invalid JSON: {e}")
-                parsed_materials = None
-
-            if parsed_materials is not None:
-                if not parsed_materials:
-                    st.warning("Enter at least one material to ingest.")
-                else:
-                    with st.spinner("Re-ingesting materials..."):
-                        stats = reingest_materials(
-                            st.session_state.token,
-                            parsed_materials,
-                        )
-
-                    st.success("Re-ingestion complete.")
-
-                    if isinstance(stats, dict):
-                        st.info(
-                            f"""
-Sources Seen: **{stats.get('sources_seen', 0)}**
-
-Sources Ingested: **{stats.get('sources_ingested', 0)}**
-
-Sources Skipped: **{stats.get('sources_skipped', 0)}**
-
-Chunks Written: **{stats.get('chunks_written', 0)}**
-"""
-                        )
-
-                    st.rerun()
 
         st.divider()
 
