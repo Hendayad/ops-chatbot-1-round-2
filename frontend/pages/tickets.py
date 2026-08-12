@@ -41,15 +41,29 @@ def show_tickets():
 
         df = pd.DataFrame(tickets)
 
+        # Keep learner identity visible in the table so Operations
+        # immediately knows who needs follow-up.
+        if "learner_name" not in df.columns:
+            df["learner_name"] = "Unknown learner"
+
+        if "user_id" not in df.columns:
+            df["user_id"] = None
+
         display = df[
             [
                 "ticket_id",
+                "learner_name",
+                "user_id",
                 "reason",
                 "status",
                 "summary",
                 "created_at",
             ]
-        ]
+        ].rename(
+            columns={
+                "learner_name": "learner",
+            }
+        )
 
         st.write("### Tickets")
         st.caption("Click a row to view its details.")
@@ -126,6 +140,20 @@ def show_tickets():
                     ),
                     unsafe_allow_html=True,
                 )
+
+            learner_name = ticket.get(
+                "learner_name",
+                "Unknown learner",
+            )
+            learner_user_id = ticket.get("user_id")
+
+            st.write("### Learner")
+            if learner_user_id:
+                st.write(
+                    f"**{learner_name}** · User ID: `{learner_user_id}`"
+                )
+            else:
+                st.write(f"**{learner_name}** · User ID unavailable")
 
             st.write("### Problem")
             st.info(ticket["problem"])

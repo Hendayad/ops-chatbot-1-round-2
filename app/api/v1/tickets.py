@@ -1,24 +1,23 @@
-"""Authenticated, rate-limited Operations APIs for escalation tickets.
+"""Authenticated, rate-limited Operations APIs for escalation tickets."""
 
-The router exposes the Sprint 2 ticket-management operations without querying
-SQLModel directly. All persistence and business rules remain inside
-``app.tickets.service``.
-"""
+from __future__ import annotations
 
 from datetime import datetime
 from typing import NoReturn
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
 from pydantic import BaseModel, Field
+from sqlmodel import select
 
+from app.api.v1.auth import get_current_ops_user
 from app.core.config import settings
 from app.core.limiter import limiter
 from app.core.logging import logger
 from app.models.escalation_ticket import EscalationTicket
 from app.models.user import User
-from app.api.v1.auth import get_current_ops_user
 from app.schemas.base import BaseResponse
 from app.schemas.escalation import EscalationSource, TicketStatus
+from app.services.database import database_service
 from app.tickets.service import (
     TicketNotFoundError,
     TicketServiceError,
@@ -28,11 +27,12 @@ from app.tickets.service import (
 )
 
 router = APIRouter()
+db_service = database_service
 
-# Keep the endpoints protected even when the repository has not added a
-# ticket-specific environment setting yet. A RATE_LIMIT_TICKETS value can be
-# added later to Settings.RATE_LIMIT_ENDPOINTS without changing this module.
-_TICKET_RATE_LIMIT = settings.RATE_LIMIT_ENDPOINTS.get("tickets", ["60 per minute"])[0]
+_TICKET_RATE_LIMIT = settings.RATE_LIMIT_ENDPOINTS.get(
+    "tickets",
+    ["60 per minute"],
+)[0]
 
 
 class OpsTicket(BaseModel):
@@ -52,8 +52,13 @@ class OpsTicket(BaseModel):
     assistant_actions: list[str] = Field(default_factory=list)
     open_questions: list[str] = Field(default_factory=list)
     privacy_note: str
+
     session_id: str | None = None
+
+    # Ticket ownership / learner identity.
     user_id: str | None = None
+    learner_name: str = "Unknown learner"
+
     created_at: datetime
 
 
@@ -72,7 +77,70 @@ class TicketDetailResponse(BaseResponse):
     ticket: OpsTicket
 
 
-def _to_api_ticket(ticket: EscalationTicket) -> OpsTicket:
+def _display_name(user: User) -> str:
+    """Build the learner's current full name with safe fallbacks."""
+    first_name = (user.first_name or "").strip()
+    last_name = (user.last_name or "").strip()
+
+    full_name = f"{first_name} {last_name}".strip()
+    if full_name:
+        return full_name
+
+    username = (user.username or "").strip()
+    if username:
+        return username
+
+    return f"User {user.id}"
+
+
+def _learner_names_for_tickets(
+    tickets: list[EscalationTicket],
+) -> dict[str, str]:
+    """Resolve ticket user IDs in one database query.
+
+    Ticket.user_id is stored as a string while User.id is an integer, so
+    malformed/legacy ticket IDs are ignored instead of breaking the endpoint.
+    """
+    numeric_ids: set[int] = set()
+
+    for ticket in tickets:
+        if ticket.user_id is None:
+            continue
+
+        try:
+            numeric_ids.add(int(str(ticket.user_id).strip()))
+        except (TypeError, ValueError):
+            logger.warning(
+                "ticket_has_invalid_user_id",
+                ticket_id=ticket.id,
+                ticket_user_id=ticket.user_id,
+            )
+
+    if not numeric_ids:
+        return {}
+
+    with db_service.get_session_maker() as session:
+        users = session.exec(
+            select(User).where(User.id.in_(numeric_ids))
+        ).all()
+
+    return {
+        str(user.id): _display_name(user)
+        for user in users
+    }
+
+
+def _learner_name_for_ticket(ticket: EscalationTicket) -> str:
+    """Resolve one ticket's learner name."""
+    names = _learner_names_for_tickets([ticket])
+    return names.get(str(ticket.user_id), "Unknown learner")
+
+
+def _to_api_ticket(
+    ticket: EscalationTicket,
+    *,
+    learner_name: str = "Unknown learner",
+) -> OpsTicket:
     """Convert the persistence model into the public Ops API contract."""
     return OpsTicket(
         ticket_id=ticket.id,
@@ -91,11 +159,17 @@ def _to_api_ticket(ticket: EscalationTicket) -> OpsTicket:
         privacy_note=ticket.privacy_note,
         session_id=ticket.session_id,
         user_id=ticket.user_id,
+        learner_name=learner_name,
         created_at=ticket.created_at,
     )
 
 
-def _raise_http_error(exc: Exception, *, operation: str, ticket_id: str | None = None) -> NoReturn:
+def _raise_http_error(
+    exc: Exception,
+    *,
+    operation: str,
+    ticket_id: str | None = None,
+) -> NoReturn:
     """Translate service-layer failures without exposing internal details."""
     if isinstance(exc, TicketNotFoundError):
         logger.info(
@@ -136,38 +210,55 @@ def _raise_http_error(exc: Exception, *, operation: str, ticket_id: str | None =
 @limiter.limit(_TICKET_RATE_LIMIT)
 async def list_ops_tickets(
     request: Request,
-    ticket_status: TicketStatus | None = Query(default=None, alias="status"),
+    ticket_status: TicketStatus | None = Query(
+        default=None,
+        alias="status",
+    ),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=100),
     current_user: User = Depends(get_current_ops_user),
 ) -> TicketListResponse:
-    """List escalation tickets, optionally filtered by status.
-
-    Authentication is enforced by ``get_current_ops_user``. The service applies the
-    actual filtering and pagination so the API does not depend on database
-    implementation details.
-    """
+    """List escalation tickets enriched with current learner names."""
     try:
         tickets = await list_tickets_from_service(
             status=ticket_status,
             offset=offset,
             limit=limit,
         )
-        api_tickets = [_to_api_ticket(ticket) for ticket in tickets]
+
+        learner_names = _learner_names_for_tickets(tickets)
+
+        api_tickets = [
+            _to_api_ticket(
+                ticket,
+                learner_name=learner_names.get(
+                    str(ticket.user_id),
+                    "Unknown learner",
+                ),
+            )
+            for ticket in tickets
+        ]
+
         logger.info(
             "ops_tickets_listed",
             authenticated_user_id=current_user.id,
-            status_filter=ticket_status.value if ticket_status else None,
+            status_filter=(
+                ticket_status.value
+                if ticket_status
+                else None
+            ),
             offset=offset,
             limit=limit,
             returned=len(api_tickets),
         )
+
         return TicketListResponse(
             tickets=api_tickets,
             offset=offset,
             limit=limit,
             returned=len(api_tickets),
         )
+
     except Exception as exc:
         _raise_http_error(exc, operation="list")
 
@@ -184,20 +275,35 @@ async def view_ops_ticket(
     ),
     current_user: User = Depends(get_current_ops_user),
 ) -> TicketDetailResponse:
-    """Return one escalation ticket by its internal ticket ID."""
+    """Return one escalation ticket with learner identity."""
     try:
         ticket = await get_ticket_from_service(ticket_id)
+
         logger.info(
             "ops_ticket_viewed",
             ticket_id=ticket_id,
             authenticated_user_id=current_user.id,
         )
-        return TicketDetailResponse(ticket=_to_api_ticket(ticket))
+
+        return TicketDetailResponse(
+            ticket=_to_api_ticket(
+                ticket,
+                learner_name=_learner_name_for_ticket(ticket),
+            )
+        )
+
     except Exception as exc:
-        _raise_http_error(exc, operation="view", ticket_id=ticket_id)
+        _raise_http_error(
+            exc,
+            operation="view",
+            ticket_id=ticket_id,
+        )
 
 
-@router.patch("/{ticket_id}/resolve", response_model=TicketDetailResponse)
+@router.patch(
+    "/{ticket_id}/resolve",
+    response_model=TicketDetailResponse,
+)
 @limiter.limit(_TICKET_RATE_LIMIT)
 async def resolve_ops_ticket(
     request: Request,
@@ -209,18 +315,26 @@ async def resolve_ops_ticket(
     ),
     current_user: User = Depends(get_current_ops_user),
 ) -> TicketDetailResponse:
-    """Mark a ticket as resolved and return the updated record.
-
-    The service operation is idempotent, so resolving an already-resolved
-    ticket returns its current state instead of failing.
-    """
+    """Resolve a ticket and return it with learner identity."""
     try:
         ticket = await resolve_ticket_from_service(ticket_id)
+
         logger.info(
             "ops_ticket_resolved",
             ticket_id=ticket_id,
             authenticated_user_id=current_user.id,
         )
-        return TicketDetailResponse(ticket=_to_api_ticket(ticket))
+
+        return TicketDetailResponse(
+            ticket=_to_api_ticket(
+                ticket,
+                learner_name=_learner_name_for_ticket(ticket),
+            )
+        )
+
     except Exception as exc:
-        _raise_http_error(exc, operation="resolve", ticket_id=ticket_id)
+        _raise_http_error(
+            exc,
+            operation="resolve",
+            ticket_id=ticket_id,
+        )
