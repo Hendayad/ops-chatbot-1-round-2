@@ -124,6 +124,19 @@ def edit_cohort_dialog(cohort):
         ),
     )
 
+    # Validate the edited date range immediately, before Save is allowed.
+    date_errors = []
+
+    if end_date < start_date:
+        date_errors.append("End Date cannot be before Start Date.")
+    elif (end_date - start_date).days < 3:
+        date_errors.append("Cohort period must be at least 3 days.")
+
+    for message in date_errors:
+        st.error(message)
+
+    dates_valid = not date_errors
+
     save_col, cancel_col = st.columns(2)
 
     with save_col:
@@ -132,12 +145,14 @@ def edit_cohort_dialog(cohort):
             type="primary",
             use_container_width=True,
             key=f"save_edit_{cohort['cohort_id']}",
+            disabled=not dates_valid,
         ):
             errors = []
 
             if not name.strip():
                 errors.append("Cohort Name is required.")
 
+            # Keep backend-request validation as defense in depth.
             if end_date < start_date:
                 errors.append("End Date cannot be before Start Date.")
 

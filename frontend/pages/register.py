@@ -27,12 +27,20 @@ def show_register() -> None:
         subtitle="Set up access to the Operations Support Portal.",
     )
 
-    cohort_load_error: str | None = None
     try:
         cohorts = _load_cohorts()
     except CohortLoadError as exc:
-        cohorts = []
-        cohort_load_error = str(exc)
+        st.error(
+            "Available cohorts could not be loaded from the backend. "
+            "This is a loading error, not the same as having no enabled cohorts."
+        )
+        st.caption(str(exc))
+
+        if st.button("Retry loading cohorts", use_container_width=True):
+            _load_cohorts.clear()
+            st.rerun()
+
+        return
 
     with st.form("register_form", border=True):
         first_col, last_col = st.columns(2)
@@ -46,23 +54,7 @@ def show_register() -> None:
         username = st.text_input("Username")
         email = st.text_input("Email")
 
-        if cohort_load_error:
-            # A failure to load the cohort selector should not block account
-            # creation. Create the learner as unassigned and let an admin
-            # assign a cohort later.
-            selected_cohort_id = NO_COHORT_ID
-            st.selectbox(
-                "Cohort",
-                options=["Cohorts temporarily unavailable"],
-                disabled=True,
-            )
-            st.warning(
-                "Available cohorts could not be loaded. "
-                "You can still create your account as 'no-cohort' and an "
-                "administrator can assign you later."
-            )
-
-        elif cohorts:
+        if cohorts:
             cohort_ids_by_name = {
                 cohort["name"]: cohort["cohort_id"]
                 for cohort in cohorts

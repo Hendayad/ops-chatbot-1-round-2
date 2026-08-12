@@ -20,7 +20,7 @@ from fastapi.security import (
 )
 
 from app.core.config import settings
-from app.cohorts.config import cohort_config
+from sqlalchemy import text
 from app.core.limiter import limiter
 from app.core.logging import (
     bind_context,
@@ -48,7 +48,6 @@ from app.utils.sanitization import (
 
 router = APIRouter()
 security = HTTPBearer()
-db_service = database_service
 db_service = database_service  # shared singleton -- do not construct a new pool here
 
 NO_COHORT_ID = "no-cohort"
@@ -186,23 +185,108 @@ async def get_current_session(
         )
 
 
+def _sync_expired_cohorts() -> None:
+    """Persist expired cohort status in the database.
+
+    A cohort is expired only after its end date has passed. A cohort whose
+    end date is today remains available through today.
+    """
+    with db_service.get_session_maker() as session:
+        result = session.execute(
+            text(
+                """
+                UPDATE cohort
+                SET enabled = FALSE
+                WHERE enabled = TRUE
+                  AND end_date IS NOT NULL
+                  AND end_date < CURRENT_DATE
+                """
+            )
+        )
+
+        if result.rowcount:
+            session.commit()
+            logger.info(
+                "expired_cohorts_disabled",
+                count=result.rowcount,
+            )
+
+
+def _get_enabled_registration_cohorts() -> list[dict[str, str]]:
+    """Return enabled, non-expired cohorts from the database."""
+    _sync_expired_cohorts()
+
+    with db_service.get_session_maker() as session:
+        rows = session.execute(
+            text(
+                """
+                SELECT cohort_id, name
+                FROM cohort
+                WHERE enabled = TRUE
+                  AND (
+                      end_date IS NULL
+                      OR end_date >= CURRENT_DATE
+                  )
+                ORDER BY name, cohort_id
+                """
+            )
+        ).mappings().all()
+
+    return [
+        {
+            "cohort_id": str(row["cohort_id"]).strip(),
+            "name": str(row["name"]).strip(),
+        }
+        for row in rows
+        if row["cohort_id"] and row["name"]
+    ]
+
+
+def _get_enabled_cohort(cohort_id: str) -> str | None:
+    """Return the canonical ID when the requested cohort is currently active."""
+    normalized_cohort_id = cohort_id.strip().lower()
+    if not normalized_cohort_id:
+        return None
+
+    _sync_expired_cohorts()
+
+    with db_service.get_session_maker() as session:
+        row = session.execute(
+            text(
+                """
+                SELECT cohort_id
+                FROM cohort
+                WHERE LOWER(cohort_id) = :cohort_id
+                  AND enabled = TRUE
+                  AND (
+                      end_date IS NULL
+                      OR end_date >= CURRENT_DATE
+                  )
+                LIMIT 1
+                """
+            ),
+            {"cohort_id": normalized_cohort_id},
+        ).mappings().first()
+
+    if row is None:
+        return None
+
+    return str(row["cohort_id"]).strip()
+
+
 @router.get("/cohorts", response_model=list[PublicCohort])
 @limiter.limit(settings.RATE_LIMIT_ENDPOINTS["register"][0])
 async def list_registration_cohorts(request: Request) -> list[PublicCohort]:
-    """Return enabled cohorts that may be selected during registration."""
-    cohorts: list[PublicCohort] = []
+    """Return only enabled cohorts that may be selected during registration."""
+    cohorts = _get_enabled_registration_cohorts()
 
-    for cohort_id in cohort_config.list_cohorts():
-        definition = cohort_config.get(cohort_id)
-        if definition is not None:
-            cohorts.append(
-                PublicCohort(
-                    cohort_id=definition.cohort_id,
-                    name=definition.name,
-                )
-            )
-
-    return cohorts
+    return [
+        PublicCohort(
+            cohort_id=cohort["cohort_id"],
+            name=cohort["name"],
+        )
+        for cohort in cohorts
+    ]
 
 
 @router.post("/register", response_model=UserResponse)
@@ -249,14 +333,18 @@ async def register_user(request: Request, user_data: UserCreate):
             )
 
         # -----------------------------
-        # Cohort validation goes HERE
+        # Cohort validation
         # -----------------------------
 
-        NO_COHORT_ID = "no-cohort"
+        requested_cohort_id = sanitize_string(
+            user_data.cohort_id
+        ).strip()
 
-        available_cohorts = cohort_config.list_cohorts()
+        available_cohorts = _get_enabled_registration_cohorts()
 
-        if user_data.cohort_id == NO_COHORT_ID:
+        if requested_cohort_id == NO_COHORT_ID:
+            # "no-cohort" is accepted only when there are genuinely no
+            # enabled cohorts available for registration.
             if available_cohorts:
                 raise HTTPException(
                     status_code=400,
@@ -266,15 +354,13 @@ async def register_user(request: Request, user_data: UserCreate):
             cohort_id = NO_COHORT_ID
 
         else:
-            cohort = cohort_config.get(user_data.cohort_id)
+            cohort_id = _get_enabled_cohort(requested_cohort_id)
 
-            if cohort is None:
+            if cohort_id is None:
                 raise HTTPException(
                     status_code=400,
-                    detail="Invalid or unavailable cohort",
+                    detail="Invalid, disabled, or expired cohort",
                 )
-
-            cohort_id = cohort.cohort_id
 
         # -----------------------------
         # Create user after validation
@@ -297,7 +383,11 @@ async def register_user(request: Request, user_data: UserCreate):
             username=user.username,
             first_name=user.first_name,
             last_name=user.last_name,
-            cohort_id=user.cohort_id.strip().lower(),
+            cohort_id=(
+                user.cohort_id.strip().lower()
+                if user.cohort_id
+                else NO_COHORT_ID
+            ),
             token=token,
         )
 
