@@ -15,6 +15,8 @@ from components.styles import (
 
 
 ROLE_OPTIONS = ["LEARNER", "ADMIN", "PROGRAM_LEAD"]
+UNASSIGNED_COHORT_ID = "unassigned"
+UNASSIGNED_COHORT_LABEL = "Unassigned"
 
 
 def _index_or_zero(options, value):
@@ -157,7 +159,7 @@ def show_users():
         for cohort in cohorts
     }
 
-    COHORT_OPTIONS = ["Unassigned"] + list(cohort_map.keys())
+    COHORT_OPTIONS = [UNASSIGNED_COHORT_LABEL] + list(cohort_map.keys())
 
     # -----------------------------
     # Search & filter controls
@@ -198,7 +200,7 @@ def show_users():
         user_role = user["role"].upper()
         user_cohort_name = cohort_name_map.get(
             user.get("cohort_id"),
-            "Unassigned",
+            UNASSIGNED_COHORT_LABEL,
         )
 
         # Search match (name, username, email)
@@ -251,7 +253,7 @@ def show_users():
         # -----------------------------
         current_cohort_name = cohort_name_map.get(
             user.get("cohort_id"),
-            "Unassigned",
+            UNASSIGNED_COHORT_LABEL,
         )
 
         reset_key = f"show_reset_{user['id']}"
@@ -363,8 +365,8 @@ def show_users():
                         payload = {
                             "role": new_role.lower(),
                             "cohort": (
-                                None
-                                if new_cohort == "Unassigned"
+                                UNASSIGNED_COHORT_ID
+                                if new_cohort == UNASSIGNED_COHORT_LABEL
                                 else cohort_map[new_cohort]
                             ),
                         }

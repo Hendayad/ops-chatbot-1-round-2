@@ -11,7 +11,7 @@ from api.register import (
 from components.styles import page_header
 
 
-NO_COHORT_ID = "no-cohort"
+UNASSIGNED_COHORT_ID = "unassigned"
 
 
 @st.cache_data(ttl=60)
@@ -70,7 +70,7 @@ def show_register() -> None:
             )
 
         else:
-            selected_cohort_id = NO_COHORT_ID
+            selected_cohort_id = UNASSIGNED_COHORT_ID
             st.selectbox(
                 "Cohort",
                 options=["No active cohort available"],
@@ -78,7 +78,7 @@ def show_register() -> None:
             )
             st.info(
                 "There are no active cohorts right now. "
-                "Your account will be created as 'no-cohort' and an "
+                "Your account will be created as 'unassigned' and an "
                 "administrator can assign you later."
             )
 

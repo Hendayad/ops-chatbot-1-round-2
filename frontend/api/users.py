@@ -2,6 +2,8 @@ import requests
 
 from api.config import BASE_URL
 
+UNASSIGNED_COHORT_ID = "unassigned"
+
 
 def get_users(token):
     response = requests.get(
@@ -16,7 +18,7 @@ def get_users(token):
     return response.json()
 
 
-def update_role(token, user_id, role, cohort_id=None):
+def update_role(token, user_id, role, cohort_id=UNASSIGNED_COHORT_ID):
     response = requests.patch(
         f"{BASE_URL}/users/{user_id}/role",
         headers={
@@ -24,7 +26,7 @@ def update_role(token, user_id, role, cohort_id=None):
         },
         json={
             "role": role,
-            "cohort_id": cohort_id,
+            "cohort": cohort_id or UNASSIGNED_COHORT_ID,
         },
     )
 
@@ -87,7 +89,7 @@ def update_password(token: str, password: str):
     response.raise_for_status()
 
     return response.json()
-def create_user(token, email, username, first_name, last_name, password, role, cohort_id=None):
+def create_user(token, email, username, first_name, last_name, password, role, cohort_id=UNASSIGNED_COHORT_ID):
     response = requests.post(
         f"{BASE_URL}/users/",
         headers={"Authorization": f"Bearer {token}"},
@@ -98,7 +100,7 @@ def create_user(token, email, username, first_name, last_name, password, role, c
             "last_name": last_name,
             "password": password,
             "role": role,
-            "cohort_id": cohort_id,
+            "cohort_id": cohort_id or UNASSIGNED_COHORT_ID,
         },
     )
 

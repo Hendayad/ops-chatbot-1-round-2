@@ -50,7 +50,7 @@ router = APIRouter()
 security = HTTPBearer()
 db_service = database_service  # shared singleton -- do not construct a new pool here
 
-NO_COHORT_ID = "no-cohort"
+UNASSIGNED_COHORT_ID = "unassigned"
 
 
 async def get_current_user(
@@ -342,8 +342,8 @@ async def register_user(request: Request, user_data: UserCreate):
 
         available_cohorts = _get_enabled_registration_cohorts()
 
-        if requested_cohort_id == NO_COHORT_ID:
-            # "no-cohort" is accepted only when there are genuinely no
+        if requested_cohort_id == UNASSIGNED_COHORT_ID:
+            # "unassigned" is accepted only when there are genuinely no
             # enabled cohorts available for registration.
             if available_cohorts:
                 raise HTTPException(
@@ -351,7 +351,7 @@ async def register_user(request: Request, user_data: UserCreate):
                     detail="A cohort must be selected",
                 )
 
-            cohort_id = NO_COHORT_ID
+            cohort_id = UNASSIGNED_COHORT_ID
 
         else:
             cohort_id = _get_enabled_cohort(requested_cohort_id)
@@ -386,7 +386,7 @@ async def register_user(request: Request, user_data: UserCreate):
             cohort_id=(
                 user.cohort_id.strip().lower()
                 if user.cohort_id
-                else NO_COHORT_ID
+                else UNASSIGNED_COHORT_ID
             ),
             token=token,
         )
