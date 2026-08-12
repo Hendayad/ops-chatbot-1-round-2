@@ -1,5 +1,6 @@
 """Frontend registration API client."""
 
+from datetime import date
 from typing import Any
 
 import requests
@@ -74,6 +75,22 @@ def get_available_cohorts() -> list[dict[str, str]]:
 
         cohort_id = str(item.get("cohort_id", "")).strip()
         name = str(item.get("name", "")).strip()
+
+        # Defense in depth: the backend should already return only enabled,
+        # non-expired cohorts, but never show a disabled/expired cohort here
+        # even if an older backend accidentally includes one.
+        if item.get("enabled") is False:
+            continue
+
+        raw_end_date = item.get("end_date")
+        if raw_end_date:
+            try:
+                if date.fromisoformat(str(raw_end_date)) < date.today():
+                    continue
+            except ValueError:
+                # Malformed lifecycle data should not be offered for
+                # registration.
+                continue
 
         if cohort_id and name:
             cohorts.append(

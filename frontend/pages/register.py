@@ -47,11 +47,20 @@ def show_register() -> None:
         email = st.text_input("Email")
 
         if cohort_load_error:
-            st.error(
-                "Available cohorts could not be loaded. "
-                "Please try again when the backend is reachable."
+            # A failure to load the cohort selector should not block account
+            # creation. Create the learner as unassigned and let an admin
+            # assign a cohort later.
+            selected_cohort_id = NO_COHORT_ID
+            st.selectbox(
+                "Cohort",
+                options=["Cohorts temporarily unavailable"],
+                disabled=True,
             )
-            selected_cohort_id = None
+            st.warning(
+                "Available cohorts could not be loaded. "
+                "You can still create your account as 'no-cohort' and an "
+                "administrator can assign you later."
+            )
 
         elif cohorts:
             cohort_ids_by_name = {
@@ -90,7 +99,6 @@ def show_register() -> None:
         submitted = st.form_submit_button(
             "Register",
             use_container_width=True,
-            disabled=cohort_load_error is not None,
         )
 
     if not submitted:

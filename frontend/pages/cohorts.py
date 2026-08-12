@@ -1,5 +1,5 @@
 import streamlit as st
-from datetime import date
+from datetime import date, timedelta
 
 from components.styles import page_header
 from api.cohorts import (
@@ -7,6 +7,7 @@ from api.cohorts import (
     create_cohort,
     delete_cohort,
     get_cohorts,
+    update_cohort,
     upload_material,
 )
 
@@ -28,6 +29,159 @@ def get_projects(cohorts):
     return ["All", *projects]
 
 
+
+def _parse_date(value, fallback=None):
+    """Convert API ISO date strings to datetime.date."""
+    if isinstance(value, date):
+        return value
+
+    if value:
+        try:
+            return date.fromisoformat(str(value))
+        except ValueError:
+            pass
+
+    return fallback
+
+
+def _sync_expired_cohorts(token, cohorts):
+    """
+    Disable expired cohorts in the backend/database.
+
+    This runs every time the Cohorts page reruns.
+    """
+    today = date.today()
+    changed = False
+
+    for cohort in cohorts:
+        if not cohort.get("enabled", True):
+            continue
+
+        cohort_end_date = _parse_date(cohort.get("end_date"))
+
+        if cohort_end_date is None or cohort_end_date >= today:
+            continue
+
+        update_cohort(
+            token,
+            cohort["cohort_id"],
+            enabled=False,
+        )
+
+        cohort["enabled"] = False
+        changed = True
+
+    return changed
+
+
+@st.dialog("Edit Cohort", width="large")
+def edit_cohort_dialog(cohort):
+    """Edit cohort metadata and persist changes through the backend API."""
+
+    st.subheader(f"Edit · {cohort['name']}")
+
+    current_start = _parse_date(
+        cohort.get("start_date"),
+        date.today(),
+    )
+    current_end = _parse_date(
+        cohort.get("end_date"),
+        current_start + timedelta(days=3),
+    )
+
+    name = st.text_input(
+        "Cohort Name*",
+        value=cohort.get("name") or "",
+        key=f"edit_name_{cohort['cohort_id']}",
+    )
+
+    description = st.text_area(
+        "Description",
+        value=cohort.get("description") or "",
+        height=120,
+        key=f"edit_description_{cohort['cohort_id']}",
+    )
+
+    project = st.text_input(
+        "Project Name",
+        value=cohort.get("project") or "",
+        key=f"edit_project_{cohort['cohort_id']}",
+    )
+
+    start_date = st.date_input(
+        "Start Date",
+        value=current_start,
+        key=f"edit_start_{cohort['cohort_id']}",
+    )
+
+    end_date = st.date_input(
+        "End Date",
+        value=current_end,
+        key=f"edit_end_{cohort['cohort_id']}",
+        help=(
+            "End Date cannot be before Start Date, and the cohort "
+            "period must be at least 3 days."
+        ),
+    )
+
+    save_col, cancel_col = st.columns(2)
+
+    with save_col:
+        if st.button(
+            "Save Changes",
+            type="primary",
+            use_container_width=True,
+            key=f"save_edit_{cohort['cohort_id']}",
+        ):
+            errors = []
+
+            if not name.strip():
+                errors.append("Cohort Name is required.")
+
+            if end_date < start_date:
+                errors.append("End Date cannot be before Start Date.")
+
+            if (end_date - start_date).days < 3:
+                errors.append("Cohort period must be at least 3 days.")
+
+            if errors:
+                for message in errors:
+                    st.error(message)
+            else:
+                # If an expired cohort is extended to today/future,
+                # reactivate it. Historical cohorts remain disabled.
+                enabled = end_date >= date.today()
+
+                token = st.session_state.get("token")
+
+                try:
+                    update_cohort(
+                        token,
+                        cohort["cohort_id"],
+                        name=name.strip(),
+                        description=description.strip() or None,
+                        project=project.strip() or None,
+                        start_date=start_date.isoformat(),
+                        end_date=end_date.isoformat(),
+                        enabled=enabled,
+                    )
+                except CohortAPIError as exc:
+                    st.error(f"Couldn't update cohort: {exc}")
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"Couldn't update cohort: {exc}")
+                else:
+                    st.success(f"Cohort '{name}' updated successfully.")
+                    st.rerun()
+
+    with cancel_col:
+        if st.button(
+            "Cancel",
+            use_container_width=True,
+            key=f"cancel_edit_{cohort['cohort_id']}",
+        ):
+            st.rerun()
+
+
 @st.dialog("Create Cohort", width="large")
 def create_cohort_dialog():
 
@@ -47,9 +201,16 @@ def create_cohort_dialog():
         value=date.today(),
     )
 
+    minimum_end_date = max(
+        date.today(),
+        start_date + timedelta(days=3),
+    )
+
     end_date = st.date_input(
         "End Date",
-        value=date.today(),
+        value=minimum_end_date,
+        min_value=minimum_end_date,
+        help="The cohort period must be at least 3 days.",
     )
 
     col1, col2 = st.columns(2)
@@ -62,8 +223,14 @@ def create_cohort_dialog():
             errors = []
             if not name.strip():
                 errors.append("Cohort Name is required.")
-            if end_date <= start_date:
-                errors.append("End Date must be at least one day after Start Date.")
+            if end_date < date.today():
+                errors.append("End Date cannot be before the cohort creation date.")
+
+            if end_date < start_date:
+                errors.append("End Date cannot be before Start Date.")
+
+            if (end_date - start_date).days < 3:
+                errors.append("Cohort period must be at least 3 days.")
 
             if errors:
                 for message in errors:
@@ -78,7 +245,7 @@ def create_cohort_dialog():
                         project=project.strip() or None,
                         start_date=start_date,
                         end_date=end_date,
-                        enabled=True,
+                        enabled=end_date >= date.today(),
                     )
                 except CohortAPIError as exc:
                     st.error(f"Couldn't create cohort: {exc}")
@@ -296,6 +463,11 @@ def show_cohorts():
 
     try:
         cohorts = get_cohorts(token, include_disabled=True)
+
+        # Persist expired status to the database on every page rerun.
+        if _sync_expired_cohorts(token, cohorts):
+            cohorts = get_cohorts(token, include_disabled=True)
+
     except Exception as e:
         st.error(f"Couldn't load cohorts: {e}")
         return
@@ -375,22 +547,51 @@ def show_cohorts():
 
             st.divider()
 
-            col1, col2 = st.columns(2)
+            is_enabled = bool(cohort.get("enabled", True))
 
-            with col1:
+            if is_enabled:
+                upload_col, edit_col, delete_col = st.columns(3)
 
-                if st.button(
-                    "📤 Upload Materials",
-                    key=f"upload_{cohort['cohort_id']}",
-                    use_container_width=True,
-                ):
-                    upload_materials_dialog(cohort)
+                with upload_col:
+                    if st.button(
+                        "📤 Upload Materials",
+                        key=f"upload_{cohort['cohort_id']}",
+                        use_container_width=True,
+                    ):
+                        upload_materials_dialog(cohort)
 
-            with col2:
+                with edit_col:
+                    if st.button(
+                        "✏️ Edit",
+                        key=f"edit_{cohort['cohort_id']}",
+                        use_container_width=True,
+                    ):
+                        edit_cohort_dialog(cohort)
 
-                if st.button(
-                    "🗑️ Delete",
-                    key=f"delete_{cohort['cohort_id']}",
-                    use_container_width=True,
-                ):
-                    delete_cohort_dialog(cohort)
+                with delete_col:
+                    if st.button(
+                        "🗑️ Delete",
+                        key=f"delete_{cohort['cohort_id']}",
+                        use_container_width=True,
+                    ):
+                        delete_cohort_dialog(cohort)
+
+            else:
+                # Disabled cohort: Edit replaces Upload Materials.
+                edit_col, delete_col = st.columns(2)
+
+                with edit_col:
+                    if st.button(
+                        "✏️ Edit",
+                        key=f"edit_{cohort['cohort_id']}",
+                        use_container_width=True,
+                    ):
+                        edit_cohort_dialog(cohort)
+
+                with delete_col:
+                    if st.button(
+                        "🗑️ Delete",
+                        key=f"delete_{cohort['cohort_id']}",
+                        use_container_width=True,
+                    ):
+                        delete_cohort_dialog(cohort)
