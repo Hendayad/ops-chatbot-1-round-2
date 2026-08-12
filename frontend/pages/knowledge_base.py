@@ -3,6 +3,7 @@ import pandas as pd
 
 from components.styles import page_header
 from api.kb import (
+    KnowledgeBaseAPIError,
     get_materials,
     retire_material,
     get_cohorts,
@@ -38,31 +39,44 @@ def show_knowledge_base():
             cohort_ids = [c["cohort_id"] for c in cohorts]
 
             selected_cohort = st.selectbox(
-                "Configured Cohorts",
+                "Enabled Cohorts",
                 cohort_ids,
             )
 
-            # Loading a cohort ingests its files and writes embeddings -- a
-            # real, non-trivial backend action, not just a display filter.
-            # To still give the "pick it and it's loaded" feel the mentor
-            # asked for (no separate button), we auto-trigger the load, but
-            # guard it against Streamlit's frequent reruns by only firing
-            # when the selected cohort actually differs from the last one
-            # we loaded -- so switching pages or interacting with other
-            # widgets on this page never re-ingests the same cohort again.
-            if selected_cohort != st.session_state.get("kb_last_loaded_cohort"):
-                with st.spinner(f"Loading materials for '{selected_cohort}'..."):
-                    stats = onboard_cohort(
-                        st.session_state.token,
-                        selected_cohort,
+            st.caption(
+                "Selecting a cohort does not re-ingest it automatically. "
+                "Use the button below only when you want to ingest or re-index "
+                "that cohort's approved files."
+            )
+
+            if st.button(
+                "Load / Re-index Selected Cohort",
+                use_container_width=True,
+            ):
+                try:
+                    with st.spinner(
+                        f"Loading materials for '{selected_cohort}'..."
+                    ):
+                        stats = onboard_cohort(
+                            st.session_state.token,
+                            selected_cohort,
+                        )
+
+                except KnowledgeBaseAPIError as exc:
+                    # Important: onboarding failure must not hide the
+                    # already-ingested Knowledge Base rows below.
+                    st.error(
+                        f"Couldn't ingest '{selected_cohort}': {exc}"
                     )
-                st.session_state["kb_last_loaded_cohort"] = selected_cohort
 
-                st.success(f"Loaded '{selected_cohort}'.")
+                else:
+                    st.success(
+                        f"'{selected_cohort}' ingestion completed."
+                    )
 
-                if isinstance(stats, dict):
-                    st.info(
-                        f"""
+                    if isinstance(stats, dict):
+                        st.info(
+                            f"""
 Sources Seen: **{stats.get('sources_seen', 0)}**
 
 Sources Ingested: **{stats.get('sources_ingested', 0)}**
@@ -71,10 +85,10 @@ Sources Skipped: **{stats.get('sources_skipped', 0)}**
 
 Chunks Written: **{stats.get('chunks_written', 0)}**
 """
-                    )
+                        )
 
         else:
-            st.warning("No cohorts are configured.")
+            st.warning("No enabled cohorts are available.")
 
         st.divider()
 

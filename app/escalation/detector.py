@@ -223,15 +223,24 @@ def _recent_failure_count(
     messages: Sequence[object],
     recent_message_window: int,
 ) -> int:
-    """Count recent failures since the latest grounded assistant answer."""
+    """Count the current consecutive unresolved assistant-failure streak.
+
+    Any normal assistant answer ends the streak, even when grounding metadata
+    has been stripped before escalation detection runs.
+    """
     count = 0
+
     for message in reversed(messages[-recent_message_window:]):
         if _message_role(message) != "ai":
             continue
-        if _grounding(message).get("grounded") is True:
-            break
+
         if _is_grounding_failure(message):
             count += 1
+            continue
+
+        # Any non-failure assistant answer resolves/resets the old streak.
+        break
+
     return count
 
 
@@ -259,14 +268,33 @@ def detect_escalation(
             "The learner explicitly requested human or Operations support.",
         )
 
-    failure_count = _recent_failure_count(messages, recent_message_window)
-    if failure_count >= repeated_failure_threshold:
-        return EscalationDecision(
-            True,
-            EscalationTrigger.REPEATED_FAILURES,
-            f"The assistant had {failure_count} recent unresolved answer failures.",
-            failure_count,
+    # Repeated failures are meaningful only when the answer to the CURRENT
+    # learner message is itself unresolved. Historical failures must never
+    # create a ticket after a successful current answer.
+    current_answer_failed = (
+        latest_ai is not None
+        and ai_index > human_index
+        and _is_grounding_failure(latest_ai)
+    )
+
+    failure_count = 0
+
+    if current_answer_failed:
+        failure_count = _recent_failure_count(
+            messages,
+            recent_message_window,
         )
+
+        if failure_count >= repeated_failure_threshold:
+            return EscalationDecision(
+                True,
+                EscalationTrigger.REPEATED_FAILURES,
+                (
+                    f"The assistant had {failure_count} "
+                    "consecutive unresolved answer failures."
+                ),
+                failure_count,
+            )
 
     if _FRUSTRATION_RE.search(learner_text):
         return EscalationDecision(
@@ -276,15 +304,11 @@ def detect_escalation(
             failure_count,
         )
 
-    # Do not reuse an old failed answer for a newer learner question.
-    if (
-        latest_ai is not None
-        and ai_index > human_index
-        and _is_grounding_failure(latest_ai)
-    ):
+    if current_answer_failed:
         raw_reason = _grounding(latest_ai).get("escalation_reason")
         raw_reason = getattr(raw_reason, "value", raw_reason)
         reason = raw_reason if isinstance(raw_reason, str) else "unknown_answer"
+
         return EscalationDecision(
             True,
             EscalationTrigger.UNKNOWN_ANSWER,

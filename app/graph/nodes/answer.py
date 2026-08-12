@@ -29,7 +29,7 @@ from pydantic import (
     ValidationError,
 )
 
-from app.cohorts.config import is_servable_cohort
+from app.cohorts.service import is_servable_cohort
 from app.cohorts.scope import is_same_cohort, normalize_cohort, scope_by_cohort
 from app.core.logging import logger
 from app.metrics.kpis import track_first_response_time, track_query_deflected

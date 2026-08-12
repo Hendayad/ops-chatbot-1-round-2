@@ -28,15 +28,17 @@ def _normalize_cohort_id(value: object) -> str:
 
 
 def _sync_user_cohort_assignments(session) -> None:
-    """Keep user/session cohort assignments consistent with active cohorts.
+    """Keep user/session cohort assignments structurally consistent.
 
-    Rules:
-    - NULL, blank, and legacy ``no-cohort`` become ``unassigned``.
-    - A cohort that is disabled or expired makes the learner unassigned.
-    - Existing chat sessions are updated too, so an old session cannot retain
-      access to a cohort after the user's assignment is removed.
+    Important lifecycle rule:
+    - NULL, blank, and legacy ``no-cohort`` values become ``unassigned``.
+    - A deleted/nonexistent cohort becomes ``unassigned``.
+    - A disabled or expired cohort DOES NOT erase the user's assignment.
+      Access is denied elsewhere while the cohort is inactive, so re-enabling
+      the cohort can safely restore access without reconstructing membership.
+    - Existing sessions follow the authoritative user assignment.
     """
-    # First persist lifecycle expiry in the cohort table itself.
+    # Persist lifecycle expiry in the cohort table.
     session.execute(
         text(
             """
@@ -49,7 +51,8 @@ def _sync_user_cohort_assignments(session) -> None:
         )
     )
 
-    # Then normalize every invalid/missing user assignment.
+    # Normalize missing/legacy values, and remove only references to cohorts
+    # that no longer exist at all. Disabled cohorts are deliberately preserved.
     session.execute(
         text(
             """
@@ -65,11 +68,6 @@ def _sync_user_cohort_assignments(session) -> None:
                         SELECT 1
                         FROM cohort AS c
                         WHERE LOWER(c.cohort_id) = LOWER(BTRIM(u.cohort_id))
-                          AND c.enabled = TRUE
-                          AND (
-                              c.end_date IS NULL
-                              OR c.end_date >= CURRENT_DATE
-                          )
                     )
                 )
             """
@@ -77,22 +75,18 @@ def _sync_user_cohort_assignments(session) -> None:
         {"unassigned": UNASSIGNED_COHORT_ID},
     )
 
-    # Sessions are a snapshot of the user's cohort. Keep them synchronized too.
+    # The user row is authoritative. Keep existing sessions synchronized so
+    # cohort changes made by Program Lead take effect without stale sessions.
     session.execute(
         text(
             """
             UPDATE "session" AS s
-            SET cohort_id = :unassigned
+            SET cohort_id = u.cohort_id
             FROM "user" AS u
             WHERE s.user_id = u.id
-              AND u.cohort_id = :unassigned
-              AND (
-                  s.cohort_id IS NULL
-                  OR LOWER(BTRIM(s.cohort_id)) <> :unassigned
-              )
+              AND s.cohort_id IS DISTINCT FROM u.cohort_id
             """
-        ),
-        {"unassigned": UNASSIGNED_COHORT_ID},
+        )
     )
 
     session.commit()
