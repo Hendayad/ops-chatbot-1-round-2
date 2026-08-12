@@ -43,7 +43,80 @@ router = APIRouter()
 agent = LangGraphAgent()
 db_service = database_service
 
+
 _TICKET_ID_RE = re.compile(r"\besc_[A-Za-z0-9_-]+\b")
+
+UNASSIGNED_COHORT_ID = "unassigned"
+UNASSIGNED_COHORT_MESSAGE = (
+    "Sorry, but you haven't been assigned to a cohort yet. "
+    "Once an administrator assigns you to a cohort, I can help answer "
+    "your program and cohort questions using the approved materials."
+)
+
+# Keep this deliberately narrow. Small talk must never become a route for
+# unsupported operational answers.
+_SMALL_TALK_PATTERNS = (
+    re.compile(r"^(?:hi|hello|hey|hiya|hey there|hello there)[!.? ]*$", re.IGNORECASE),
+    re.compile(
+        r"^(?:good morning|good afternoon|good evening|good night)[!.? ]*$",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"^(?:how are you|how are you doing|how's it going|how is it going|"
+        r"how are things|what's up|what is up)[!.? ]*$",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"^(?:thanks|thank you|thank you very much|thanks a lot|thx)[!.? ]*$",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"^(?:bye|goodbye|see you|see you later|have a nice day)[!.? ]*$",
+        re.IGNORECASE,
+    ),
+)
+
+
+def _normalize_cohort_id(value: str | None) -> str:
+    """Normalize current and legacy no-cohort sentinel values."""
+    if value is None:
+        return UNASSIGNED_COHORT_ID
+
+    normalized = value.strip().lower()
+    if not normalized or normalized in {"no-cohort", "none", "null"}:
+        return UNASSIGNED_COHORT_ID
+
+    return normalized
+
+
+def _is_unassigned_cohort(value: str | None) -> bool:
+    """Return whether the learner currently has no cohort assignment."""
+    return _normalize_cohort_id(value) == UNASSIGNED_COHORT_ID
+
+
+def _latest_user_text(messages: Sequence[Any]) -> str:
+    """Return the latest user/human text from a request message list."""
+    for message in reversed(messages):
+        if isinstance(message, dict):
+            role = message.get("role") or message.get("type")
+        else:
+            role = getattr(message, "role", None) or getattr(message, "type", None)
+
+        if role not in {"user", "human"}:
+            continue
+
+        return _message_text(message)
+
+    return ""
+
+
+def _is_small_talk(text: str) -> bool:
+    """Recognize only simple social messages that do not need cohort knowledge."""
+    normalized = " ".join(text.split()).strip()
+    if not normalized:
+        return False
+
+    return any(pattern.fullmatch(normalized) for pattern in _SMALL_TALK_PATTERNS)
 
 
 def _message_text(message: Any) -> str:
@@ -224,13 +297,41 @@ async def chat(
                         )
                     ]
                 )
+        # Use the current user assignment as the authoritative cohort.
+        # This avoids stale session cohort values after an administrator changes
+        # the learner's assignment.
+        current_cohort_id = _normalize_cohort_id(user.cohort_id)
+        latest_user_text = _latest_user_text(chat_request.messages)
+
+        # Unassigned learners may still use the existing small-talk path.
+        # Operational/non-social questions are stopped before retrieval and,
+        # importantly, before escalation so no useless ticket is created.
+        if (
+            _is_unassigned_cohort(current_cohort_id)
+            and not _is_small_talk(latest_user_text)
+        ):
+            logger.info(
+                "chat_blocked_unassigned_cohort",
+                session_id=session.id,
+                user_id=str(session.user_id),
+            )
+            return ChatResponse(
+                messages=[
+                    Message(
+                        role="assistant",
+                        content=UNASSIGNED_COHORT_MESSAGE,
+                    )
+                ],
+                cohort_id=UNASSIGNED_COHORT_ID,
+            )
+
         result = await agent.get_response(
             chat_request.messages,
             session.id,
             user_id=str(session.user_id),
             username=session.username,
             first_name=user.first_name,
-            cohort_id=session.cohort_id,
+            cohort_id=current_cohort_id,
         )
 
         escalation_message = await _run_escalation_flow(result, session)
@@ -238,7 +339,7 @@ async def chat(
             result.append(escalation_message.model_dump())
 
         logger.info("chat_request_processed", session_id=session.id)
-        return ChatResponse(messages=result, cohort_id=session.cohort_id)
+        return ChatResponse(messages=result, cohort_id=current_cohort_id)
     except Exception as exc:
         logger.exception(
             "chat_request_failed",
@@ -309,19 +410,49 @@ async def chat_stream(
                     media_type="text/event-stream",
                 )
 
+        user = await db_service.get_user(session.user_id)
+
+        if user is None:
+            raise HTTPException(
+                status_code=404,
+                detail="User not found",
+            )
+
+        current_cohort_id = _normalize_cohort_id(user.cohort_id)
+        latest_user_text = _latest_user_text(chat_request.messages)
+
+        if (
+            _is_unassigned_cohort(current_cohort_id)
+            and not _is_small_talk(latest_user_text)
+        ):
+            logger.info(
+                "stream_chat_blocked_unassigned_cohort",
+                session_id=session.id,
+                user_id=str(session.user_id),
+            )
+
+            async def unassigned_generator():
+                response = StreamResponse(
+                    content=UNASSIGNED_COHORT_MESSAGE,
+                    done=True,
+                    cohort_id=UNASSIGNED_COHORT_ID,
+                )
+                yield (
+                    f"data: "
+                    f"{json.dumps(response.model_dump(mode='json'))}"
+                    f"\n\n"
+                )
+
+            return StreamingResponse(
+                unassigned_generator(),
+                media_type="text/event-stream",
+            )
+
         async def event_generator():
             """Generate chat chunks followed by an optional escalation message."""
             streamed_chunks: list[str] = []
 
             try:
-                user = await db_service.get_user(session.user_id)
-
-                if user is None:
-                    raise HTTPException(
-                        status_code=404,
-                        detail="User not found",
-                    )
-
                 model_name = agent.llm_service.get_llm().get_name()
                 with llm_stream_duration_seconds.labels(model=model_name).time():
                     async for chunk in agent.get_stream_response(
@@ -330,10 +461,10 @@ async def chat_stream(
                         user_id=str(session.user_id),
                         username=session.username,
                         first_name=user.first_name,
-                        cohort_id=session.cohort_id,
+                        cohort_id=current_cohort_id,
                     ):
                         streamed_chunks.append(chunk)
-                        response = StreamResponse(content=chunk, done=False, cohort_id=session.cohort_id)
+                        response = StreamResponse(content=chunk, done=False, cohort_id=current_cohort_id)
                         yield f"data: {json.dumps(response.model_dump(mode='json'))}\n\n"
 
                 # Prefer the checkpointed conversation because it contains prior
@@ -359,11 +490,11 @@ async def chat_stream(
                     response = StreamResponse(
                         content=f"\n\n{escalation_message.content}",
                         done=False,
-                        cohort_id=session.cohort_id,
+                        cohort_id=current_cohort_id,
                     )
                     yield f"data: {json.dumps(response.model_dump(mode='json'))}\n\n"
 
-                final_response = StreamResponse(content="", done=True, cohort_id=session.cohort_id)
+                final_response = StreamResponse(content="", done=True, cohort_id=current_cohort_id)
                 yield f"data: {json.dumps(final_response.model_dump(mode='json'))}\n\n"
 
             except Exception as exc:
@@ -375,7 +506,7 @@ async def chat_stream(
                 error_response = StreamResponse(
                     content="Unable to complete the chat request.",
                     done=True,
-                    cohort_id=session.cohort_id,
+                    cohort_id=current_cohort_id,
                 )
                 yield f"data: {json.dumps(error_response.model_dump(mode='json'))}\n\n"
 

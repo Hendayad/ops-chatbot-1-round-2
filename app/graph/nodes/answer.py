@@ -58,6 +58,13 @@ EscalationReason = Literal[
     "llm_error",
 ]
 
+UNASSIGNED_COHORT_ID = "unassigned"
+UNASSIGNED_COHORT_MESSAGE = (
+    "Sorry, but you haven't been assigned to a cohort yet. "
+    "Once an administrator assigns you to a cohort, I can help answer "
+    "your program and cohort questions using the approved materials."
+)
+
 
 class SourceAttribution(BaseModel):
     """Validated source metadata attached to a grounded answer."""
@@ -188,6 +195,16 @@ def _refusal(reason: EscalationReason) -> AnswerOutcome:
     )
 
 
+def _unassigned_outcome() -> AnswerOutcome:
+    """Return a non-escalating response for a learner with no cohort yet."""
+    return AnswerOutcome(
+        answer=UNASSIGNED_COHORT_MESSAGE,
+        grounded=False,
+        needs_escalation=False,
+        escalation_reason=None,
+    )
+
+
 def _deduplicate_and_scope_chunks(
     chunks: Sequence[RetrievedChunk],
     *,
@@ -288,9 +305,15 @@ async def generate_grounded_answer(
         return _refusal("missing_question")
     if not normalized_cohort:
         return _refusal("missing_cohort")
-    # A cohort absent from the configuration file has no approved materials of
-    # its own. Answering it would mean serving someone else's, so refuse before
-    # retrieval rather than after.
+
+    # "unassigned" is a valid account state, not a grounding failure.
+    # Do not retrieve from any cohort and do not trigger an Operations ticket.
+    if normalized_cohort == UNASSIGNED_COHORT_ID:
+        logger.info("grounded_answer_unassigned_cohort")
+        return _unassigned_outcome()
+
+    # A non-servable cohort has no approved materials available to this learner.
+    # Refuse before retrieval rather than risk cross-cohort access.
     if not is_servable_cohort(normalized_cohort):
         logger.warning("grounded_answer_unknown_cohort", cohort=normalized_cohort)
         return _refusal("unknown_cohort")
@@ -415,6 +438,8 @@ answer_node = grounded_answer
 
 __all__ = [
     "AnswerOutcome",
+    "UNASSIGNED_COHORT_ID",
+    "UNASSIGNED_COHORT_MESSAGE",
     "SourceAttribution",
     "answer_node",
     "extract_latest_question",
